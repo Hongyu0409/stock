@@ -1,0 +1,143 @@
+# 美股近一週波動分析與每日推薦標的設定檔 (US Stock Weekly Volatility & Daily Picks Config)
+
+schedule:
+  timezone: "Asia/Taipei"
+  push_time: "08:00"
+
+# 1. 大盤核心指數與跨資產風險指標
+market_indices:
+  SPY: "標普500 (S&P 500)"
+  QQQ: "那斯達克100 (Nasdaq 100)"
+  DIA: "道瓊工業 (Dow Jones)"
+  IWM: "羅素2000小型股 (Russell 2000)"
+  SOXX: "費城半導體 (SOXX)"
+
+macro_indicators:
+  "^VIX": "VIX 恐慌指數"
+  "^TNX": "10年期美債殖利率"
+  "GLD": "黃金 ETF (GLD)"
+  "BTC-USD": "比特幣 (BTC)"
+
+# 2. SPDR 11 大產業板塊 ETF
+sector_etfs:
+  XLK: "科技 (Tech)"
+  XLC: "通訊服務 (Comm)"
+  XLY: "非必需消費 (Cons Disc)"
+  XLF: "金融 (Financials)"
+  XLV: "醫療保健 (Healthcare)"
+  XLI: "工業 (Industrials)"
+  XLP: "必需消費 (Cons Staples)"
+  XLE: "能源 (Energy)"
+  XLU: "公用事業 (Utilities)"
+  XLRE: "房地產 (Real Estate)"
+  XLB: "原物料 (Materials)"
+
+# 3. 推薦交易標的選股池 (美股熱門大型股 + 科技巨頭 + 動能焦點股，依板塊分類)
+stock_universe:
+  XLK: # 科技與半導體
+    - NVDA
+    - AAPL
+    - MSFT
+    - AVGO
+    - AMD
+    - TSM
+    - MU
+    - ASML
+    - QCOM
+    - ARM
+    - MRVL
+    - SMCI
+    - CRM
+    - ORCL
+    - ADBE
+    - NOW
+    - PLTR
+    - PANW
+    - CRWD
+    - SNOW
+    - ANET
+    - DELL
+  XLC: # 通訊與網路平台
+    - META
+    - GOOGL
+    - NFLX
+    - DIS
+    - SPOT
+    - TMUS
+    - RDDT
+  XLY: # 非必需消費與電動車/電商
+    - AMZN
+    - TSLA
+    - COST
+    - HD
+    - MCD
+    - NKE
+    - SBUX
+    - BKNG
+    - UBER
+    - ABNB
+    - MELI
+  XLF: # 金融與支付/加密概念
+    - JPM
+    - GS
+    - MS
+    - BAC
+    - V
+    - MA
+    - AXP
+    - BRK-B
+    - BLK
+    - COIN
+    - HOOD
+  XLV: # 醫療與生技減肥藥龍頭
+    - LLY
+    - UNH
+    - NVO
+    - JNJ
+    - ABBV
+    - MRK
+    - ISRG
+    - AMGN
+    - VRTX
+  XLI: # 工業、航太與電力基建
+    - CAT
+    - GE
+    - VRT
+    - ETN
+    - RTX
+    - BA
+    - LMT
+    - UNP
+    - DE
+  XLE: # 能源
+    - XOM
+    - CVX
+    - COP
+    - SLB
+  XLU: # 公用事業与核電AI電力
+    - NEE
+    - CEG
+    - VST
+  XLP: # 必需消費
+    - WMT
+    - PG
+    - KO
+    - PEP
+  XLB: # 原物料與礦業
+    - LIN
+    - FCX
+    - NEM
+
+# 4. 量化策略與風控參數
+strategy_params:
+  top_picks_per_category: 3       # 每個策略類別最多推薦幾檔標的
+  top_volatility_alerts: 5        # 近一週波動異常放大排行顯示幾檔
+  atr_period: 14                  # ATR 計算週期
+  rsi_period: 14                  # RSI 計算週期
+  stop_loss_atr_mult: 1.5         # 動態停損倍數 (1.5x ATR)
+  take_profit_t1_atr_mult: 2.0    # 第一目標停利倍數 (2.0x ATR)
+  take_profit_t2_atr_mult: 3.0    # 第二目標停利倍數 (3.0x ATR，風報比 1:2)
+
+# 5. LINE 推播設定
+line_notification:
+  message_mode: "both"            # 可選 "flex" (精美卡片), "text" (純文字戰報), 或 "both"

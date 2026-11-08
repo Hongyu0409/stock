@@ -1,0 +1,66 @@
+name: Daily 08:00 US Stock Volatility & Trading Picks Push
+
+on:
+  schedule:
+    # UTC 00:00 對應台灣時間 (UTC+8) 每天早上 08:00 自動執行
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+    inputs:
+      message_mode:
+        description: "LINE 推播格式 (both: 輪播卡片+文字 / flex: 僅卡片 / text: 僅文字)"
+        required: false
+        default: "both"
+        type: choice
+        options:
+          - both
+          - flex
+          - text
+      use_demo:
+        description: "是否使用模擬測試資料 (true/false)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  analyze-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run US Stock Weekly Volatility Analysis & LINE Push
+        env:
+          TZ: Asia/Taipei
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+          LINE_MESSAGE_MODE: ${{ inputs.message_mode || 'both' }}
+        run: |
+          if [ "${{ inputs.use_demo }}" = "true" ]; then
+            python main.py --demo
+          else
+            python main.py
+          fi
+
+      - name: Upload Daily Analysis Report Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: us-stock-daily-report-${{ github.run_number }}
+          path: reports/
+          retention-days: 30
