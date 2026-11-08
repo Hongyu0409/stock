@@ -25,88 +25,95 @@ def _fmt_pct(val: float) -> str:
 
 
 def format_line_text_messages(report: WeeklyAnalysisReport) -> List[str]:
-    """Format the report into 1-2 mobile-friendly LINE text messages."""
-    # Message 1: Market Overview + Sector Rotation + Volatility Radar
+    """Format the report into 1-2 mobile-friendly, easy-to-read LINE text messages."""
+    # Message 1: Market Temperature & Overall Trend
     lines_1: List[str] = [
-        f"🌅 【美股晨間戰報 & 近一週波動分析】",
-        f"📅 收盤基準日：{report.report_date}",
-        f"🧭 市場狀態：{report.market_regime}",
+        f"🌅 【美股每日早報】",
+        f"📅 資料日期：{report.report_date}",
+        f"🧭 市場溫度：{report.market_regime}",
         f"💡 {report.regime_summary}",
         "━━━━━━━━━━━━━━",
-        "📊 【四大指數 & 費半近一週表現】",
+        "📊 【主要指數近一週走勢】",
     ]
 
     for idx in report.indices:
+        # e.g., 標普500 (SPY): $580.20 | 昨夜 ▲+0.3% | 一週 ▼-2.1%
+        c_name = idx.name.split(" ")[0]
         lines_1.append(
-            f"• {idx.symbol} ({idx.name.split(' ')[0]}): ${idx.close:.2f}\n"
-            f"  昨夜 {_fmt_pct(idx.ret_1d_pct)}｜近5日 {_fmt_pct(idx.ret_5d_pct)}｜週振幅 {idx.week_range_pct:.1f}%"
+            f"• {c_name} ({idx.symbol})：${idx.close:,.2f}\n"
+            f"  昨夜 {_fmt_pct(idx.ret_1d_pct)} ｜ 近一週 {_fmt_pct(idx.ret_5d_pct)}"
         )
 
     if report.macros:
         lines_1.append("━━━━━━━━━━━━━━")
-        lines_1.append("🌡️ 【跨資產與恐慌指標】")
+        lines_1.append("🌡️ 【市場風險與其他資產】")
         for m in report.macros:
-            label = m.name.split(" ")[0]
+            c_name = m.name.split(" ")[0]
             lines_1.append(
-                f"• {label} ({m.symbol}): {m.close:.2f} (1D {m.ret_1d_pct:+.1f}% / 5D {m.ret_5d_pct:+.1f}%)"
+                f"• {c_name}：{m.close:,.2f}（一週 {_fmt_pct(m.ret_5d_pct)}）"
             )
 
     if report.sector_rankings:
         lines_1.append("━━━━━━━━━━━━━━")
-        lines_1.append("🔄 【11大板塊資金輪動 (近5日)】")
+        lines_1.append("🔄 【本週最夯與最弱產業】")
         top3 = report.sector_rankings[:3]
         bot3 = report.sector_rankings[-3:]
         lines_1.append(
-            "🔥 領漲強勢："
-            + "、".join(f"{s.symbol} {s.name.split(' ')[0]}({s.ret_5d_pct:+.1f}%)" for s in top3)
+            "🔥 資金流入（最強）："
+            + "、".join(f"{s.name.split(' ')[0]}({s.ret_5d_pct:+.1f}%)" for s in top3)
         )
         lines_1.append(
-            "❄️ 落後弱勢："
-            + "、".join(f"{s.symbol} {s.name.split(' ')[0]}({s.ret_5d_pct:+.1f}%)" for s in bot3)
+            "❄️ 資金流出（最弱）："
+            + "、".join(f"{s.name.split(' ')[0]}({s.ret_5d_pct:+.1f}%)" for s in bot3)
         )
 
     if report.volatility_alerts:
         lines_1.append("━━━━━━━━━━━━━━")
-        lines_1.append("⚡ 【近一週波動異常 & 爆量雷達】")
+        lines_1.append("⚡ 【本週波動劇烈個股（震盪大）】")
         for v in report.volatility_alerts[:4]:
             lines_1.append(
-                f"• {v.symbol} (${v.close:.2f})｜5D {v.ret_5d_pct:+.1f}%｜振幅 {v.week_range_pct:.1f}%\n"
-                f"  └ {v.alert_reason}"
+                f"• {v.symbol}（${v.close:.2f}）一週漲跌 {v.ret_5d_pct:+.1f}%\n"
+                f"  高低點震盪幅度：{v.week_range_pct:.1f}%"
             )
 
     msg1 = "\n".join(lines_1)
 
-    # Message 2: Daily Trading Picks (3 Strategies)
+    # Message 2: Daily Selected Stocks
     lines_2: List[str] = [
-        f"🎯 【每日量化推薦交易標的】({report.report_date})",
-        "依 14日 ATR 動態計算停損與目標價（風報比 1:2）",
+        f"🎯 【今日精選觀察個股】({report.report_date})",
+        "💡 系統依趨勢強弱自動計算參考價位（風報比 1:2）",
     ]
 
     def _append_picks_section(title: str, picks: List[TradingPick], is_short: bool = False) -> None:
         lines_2.append("━━━━━━━━━━━━━━")
         lines_2.append(title)
         if not picks:
-            lines_2.append("• 今日無符合嚴格篩選條件之標的")
+            lines_2.append("• 今日無符合條件之標的")
             return
         for idx_num, p in enumerate(picks, start=1):
-            tag_str = " / ".join(p.tags) if p.tags else "量化動能入選"
-            sl_label = "空單防守/壓力" if is_short else "動態停損(1.5xATR)"
-            tp_label = "下方目標(2x/3xATR)" if is_short else "停利目標(2x/3xATR)"
+            tag_str = "、".join(p.tags) if p.tags else "動能良好"
+            if is_short:
+                sl_label = "若反彈突破此價需注意壓力/停損"
+                tp_label = "可能回檔目標價"
+            else:
+                sl_label = "建議防守停損價"
+                tp_label = "分批獲利目標價"
+
             lines_2.append(
-                f"{idx_num}. 【{p.symbol}】評分 {p.score}分｜現價 ${p.close:.2f}\n"
-                f"   📈 1D {p.ret_1d_pct:+.1f}%｜5D {p.ret_5d_pct:+.1f}%｜日均波動(NATR) {p.natr_14_pct:.1f}%\n"
-                f"   🏷️ 理由：{tag_str}\n"
-                f"   🎯 參考區間：{p.entry_zone}\n"
+                f"{idx_num}. 【{p.symbol}】（{p.sector_name.split(' ')[0]}）評分 {p.score}分\n"
+                f"   現價：${p.close:.2f}（昨夜 {p.ret_1d_pct:+.1f}% / 一週 {p.ret_5d_pct:+.1f}%）\n"
+                f"   📌 重點特徵：{tag_str}\n"
+                f"   🎯 參考進場區間：{p.entry_zone}\n"
                 f"   🛡️ {sl_label}：${p.stop_loss:.2f} ({p.stop_loss_pct:+.1f}%)\n"
-                f"   💰 {tp_label}：T1 ${p.take_profit_t1:.2f} ({p.take_profit_t1_pct:+.1f}%) / T2 ${p.take_profit_t2:.2f} ({p.take_profit_t2_pct:+.1f}%)"
+                f"   💰 {tp_label}：目標一 ${p.take_profit_t1:.2f} ({p.take_profit_t1_pct:+.1f}%) ｜ 目標二 ${p.take_profit_t2:.2f} ({p.take_profit_t2_pct:+.1f}%)"
             )
 
-    _append_picks_section("🚀 【順勢突破型 (量增突破強勢股)】", report.breakout_picks, is_short=False)
-    _append_picks_section("🔄 【強勢股拉回買點 (多頭回測支撐)】", report.pullback_picks, is_short=False)
-    _append_picks_section("⚠️ 【空方避險 / 破位警示 (跌破均線)】", report.breakdown_picks, is_short=True)
+    _append_picks_section("🚀 【強勢突破股（買盤轉強創高）】", report.breakout_picks, is_short=False)
+    _append_picks_section("🔄 【優質回檔股（多頭拉回找支撐）】", report.pullback_picks, is_short=False)
+    _append_picks_section("⚠️ 【弱勢警戒股（跌破重要均線）】", report.breakdown_picks, is_short=True)
 
     lines_2.append("━━━━━━━━━━━━━━")
-    lines_2.append("📌 免責聲明：本報表由量化指標自動產出，僅供盤前觀察與風控參考，不構成投資建議。")
+    lines_2.append("📌 溫馨提醒：本清單由演算法自動統計，僅供日常觀察與風險控管參考，不代表投資建議。")
 
     msg2 = "\n".join(lines_2)
     return [msg1[:4900], msg2[:4900]]
@@ -126,7 +133,7 @@ def _build_pick_bubble(
         body_contents.append(
             {
                 "type": "text",
-                "text": "今日無符合嚴格篩選條件之標的",
+                "text": "今日無符合條件之標的",
                 "size": "sm",
                 "color": "#888888",
                 "wrap": True,
@@ -138,8 +145,8 @@ def _build_pick_bubble(
                 body_contents.append({"type": "separator", "margin": "md"})
             ret_color = "#16a34a" if p.ret_5d_pct >= 0 else "#dc2626"
             badge_color = "#dc2626" if is_short else "#2563eb"
-            sl_label = "防守壓力" if is_short else "停損價"
-            tp_label = "回測目標" if is_short else "停利目標"
+            sl_label = "防守價" if is_short else "停損價"
+            tp_label = "目標價" if is_short else "獲利目標"
 
             card_box: Dict[str, Any] = {
                 "type": "box",
@@ -161,7 +168,7 @@ def _build_pick_bubble(
                             },
                             {
                                 "type": "text",
-                                "text": f"評分 {p.score}",
+                                "text": f"評分 {p.score}分",
                                 "weight": "bold",
                                 "size": "xs",
                                 "color": badge_color,
@@ -172,20 +179,20 @@ def _build_pick_bubble(
                     },
                     {
                         "type": "text",
-                        "text": f"1D {p.ret_1d_pct:+.1f}% ｜ 5D {p.ret_5d_pct:+.1f}% ｜ NATR {p.natr_14_pct:.1f}%",
+                        "text": f"昨夜 {p.ret_1d_pct:+.1f}% ｜ 近一週 {p.ret_5d_pct:+.1f}%",
                         "size": "xs",
                         "color": ret_color,
                     },
                     {
                         "type": "text",
-                        "text": "🏷️ " + (" / ".join(p.tags) if p.tags else "量化指標入選"),
+                        "text": "📌 " + ("、".join(p.tags) if p.tags else "趨勢良好"),
                         "size": "xs",
                         "color": "#374151",
                         "wrap": True,
                     },
                     {
                         "type": "text",
-                        "text": f"🎯 區間：{p.entry_zone}",
+                        "text": f"🎯 建議區間：{p.entry_zone}",
                         "size": "xs",
                         "color": "#1f2937",
                     },
@@ -287,7 +294,7 @@ def build_line_flex_carousel(report: WeeklyAnalysisReport) -> Dict[str, Any]:
             "contents": [
                 {
                     "type": "text",
-                    "text": f"📊 美股週波動戰報 ({report.report_date})",
+                    "text": f"📊 美股市場速報 ({report.report_date})",
                     "weight": "bold",
                     "size": "md",
                     "color": "#ffffff",
@@ -317,7 +324,7 @@ def build_line_flex_carousel(report: WeeklyAnalysisReport) -> Dict[str, Any]:
                 {"type": "separator", "margin": "sm"},
                 {
                     "type": "text",
-                    "text": "【核心指數 1D / 5D 表現】",
+                    "text": "【主要指數 昨夜 / 本週 漲跌】",
                     "weight": "bold",
                     "size": "xs",
                     "color": "#111827",
@@ -326,14 +333,14 @@ def build_line_flex_carousel(report: WeeklyAnalysisReport) -> Dict[str, Any]:
                 {"type": "separator", "margin": "sm"},
                 {
                     "type": "text",
-                    "text": f"🔥 強勢板塊：{top_sec}",
+                    "text": f"🔥 最強產業：{top_sec}",
                     "size": "xs",
                     "color": "#15803d",
                     "wrap": True,
                 },
                 {
                     "type": "text",
-                    "text": f"❄️ 弱勢板塊：{bot_sec}",
+                    "text": f"❄️ 最弱產業：{bot_sec}",
                     "size": "xs",
                     "color": "#b91c1c",
                     "wrap": True,
@@ -343,22 +350,22 @@ def build_line_flex_carousel(report: WeeklyAnalysisReport) -> Dict[str, Any]:
     }
 
     b_breakout = _build_pick_bubble(
-        title="🚀 順勢突破推薦標的",
-        subtitle="量增突破近期高點 + 強勢板塊",
+        title="🚀 強勢突破股",
+        subtitle="買盤轉強、突破近期高點",
         header_bg="#1d4ed8",
         picks=report.breakout_picks,
         is_short=False,
     )
     b_pullback = _build_pick_bubble(
-        title="🔄 強勢股拉回買點",
-        subtitle="多頭趨勢回測 20MA 支撐止穩",
+        title="🔄 優質回檔股",
+        subtitle="趨勢向上、回測月線找買點",
         header_bg="#047857",
         picks=report.pullback_picks,
         is_short=False,
     )
     b_breakdown = _build_pick_bubble(
-        title="⚠️ 空方避險 / 破位警示",
-        subtitle="跌破重要均線或爆量破底警示",
+        title="⚠️ 弱勢警戒股",
+        subtitle="跌破重要均線、留意下殺風險",
         header_bg="#b91c1c",
         picks=report.breakdown_picks,
         is_short=True,

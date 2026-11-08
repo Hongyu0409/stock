@@ -95,22 +95,22 @@ def _classify_market_regime(
     qqq_above_ma20 = (qqq.close >= qqq.ma_20) if qqq else True
 
     if vix_level >= 25.0 or (not spy_above_ma50 and vix_5d > 10.0):
-        regime = "🔴 高波動避險期 (Risk-Off)"
+        regime = "🔴 市場震盪偏弱（防守觀望）"
         summary = (
-            f"VIX 處於 {vix_level:.1f} 高檔（近5日 {vix_5d:+.1f}%），大盤跌破關鍵均線支撐。"
-            "建議嚴控部位規模（降至平時 30~50%）、拉寬 ATR 停損或以空方避險為主。"
+            f"恐慌指數升高（{vix_level:.1f}），大盤跌破月線支撐。"
+            "建議保守操作、減少持股部位，避免追高，以保留現金或防守為主。"
         )
     elif spy_above_ma20 and qqq_above_ma20 and vix_level < 20.0:
-        regime = "🟢 多頭順勢進攻期 (Risk-On)"
+        regime = "🟢 市場多頭強勢（偏多操作）"
         summary = (
-            f"標普與那指穩守 20MA 之上（SPY 近5日 {spy_5d:+.2f}%），VIX 僅 {vix_level:.1f}（近5日 {vix_5d:+.1f}%）。"
-            "市場情緒穩定，適合鎖定強勢領漲板塊的「順勢突破」與「強勢股拉回」標的。"
+            f"大盤走勢穩健（標普一週 {spy_5d:+.2f}%），恐慌指數低（{vix_level:.1f}）。"
+            "市場氣氛樂觀，適合留意強勢族群中「剛突破」或「回檔有守」的優質股票。"
         )
     else:
-        regime = "🟡 震盪輪動選股期 (Neutral Rotation)"
+        regime = "🟡 盤整震盪（挑個股操作）"
         summary = (
-            f"指數進入區間震盪（SPY 近5日 {spy_5d:+.2f}%，VIX {vix_level:.1f}），資金在板塊間快速輪動。"
-            "建議「買黑不買紅」，優先挑選回測 20MA 支撐的強勢股，追高突破需確認帶量。"
+            f"大盤目前處於區間震盪（標普一週 {spy_5d:+.2f}%），資金快速換股輪動。"
+            "建議不要追高，耐心等待好股票回檔止跌再考慮分批進場。"
         )
     return regime, summary
 
@@ -251,29 +251,29 @@ def analyze_market(
                 tags: List[str] = []
                 if m.close >= m.prev_high_20d * 0.998:
                     score += 12
-                    tags.append("創20日新高突破")
+                    tags.append("突破近一個月新高")
                 else:
                     score += 6
-                    tags.append("逼近波段前高")
+                    tags.append("逼近波段高點")
 
                 if m.vol_ratio_1d >= 1.3:
                     score += 12
-                    tags.append(f"帶量攻擊 {m.vol_ratio_1d:.1f}x")
+                    tags.append(f"買盤放量({m.vol_ratio_1d:.1f}倍)")
                 elif m.vol_ratio_5d >= 1.15:
                     score += 7
-                    tags.append(f"週均量增 {m.vol_ratio_5d:.1f}x")
+                    tags.append(f"本週量能增溫({m.vol_ratio_5d:.1f}倍)")
 
                 if m.sector in top_sectors or sec_rs > 0.3:
                     score += 8
-                    tags.append(f"強勢板塊({sec_label.split(' ')[0]})")
+                    tags.append(f"熱門強勢產業({sec_label.split(' ')[0]})")
 
                 if m.ma_20 > m.ma_50 > m.ma_200:
                     score += 6
-                    tags.append("均線多頭排列")
+                    tags.append("均線完整多頭向上")
 
                 if m.ret_5d_pct > spy_5d + 2.0:
                     score += 5
-                    tags.append(f"強於大盤 {m.ret_5d_pct - spy_5d:+.1f}%")
+                    tags.append(f"表現強於大盤({m.ret_5d_pct - spy_5d:+.1f}%)")
 
                 score = min(98, score)
                 sl = max(0.01, m.close - sl_mult * atr)
@@ -288,8 +288,8 @@ def analyze_market(
                         sector_code=m.sector,
                         sector_name=sec_label,
                         strategy_type="breakout",
-                        strategy_label="🚀 順勢突破型",
-                        direction="LONG (順勢做多)",
+                        strategy_label="🚀 帶量突破股",
+                        direction="看多",
                         score=score,
                         close=m.close,
                         ret_1d_pct=m.ret_1d_pct,
@@ -326,29 +326,29 @@ def analyze_market(
             tags = []
             if abs(m.dist_ma20_pct) <= 2.0:
                 score += 12
-                tags.append(f"回測20MA支撐({m.dist_ma20_pct:+.1f}%)")
+                tags.append("回測月線有守")
             else:
                 score += 6
-                tags.append("守穩50MA多頭架構")
+                tags.append("維持中長期多頭格局")
 
             if m.ret_1d_pct >= 0.0:
                 score += 10
-                tags.append(f"日K止跌轉紅({m.ret_1d_pct:+.1f}%)")
+                tags.append(f"止跌回穩({m.ret_1d_pct:+.1f}%)")
             elif m.close > m.open_price:
                 score += 6
-                tags.append("盤中低接買盤支撐")
+                tags.append("盤中有買盤承接")
 
             if m.vol_ratio_1d <= 1.05:
                 score += 8
-                tags.append(f"量縮整理({m.vol_ratio_1d:.2f}x)")
+                tags.append("量縮回檔不凌亂")
 
             if 40.0 <= m.rsi_14 <= 54.0:
                 score += 6
-                tags.append(f"RSI降溫至{m.rsi_14:.0f}")
+                tags.append("漲多指標降溫健康")
 
             if m.sector in top_sectors:
                 score += 5
-                tags.append(f"強勢板塊({sec_label.split(' ')[0]})")
+                tags.append(f"強勢產業({sec_label.split(' ')[0]})")
 
             score = min(96, score)
             support_ref = min(m.close, m.ma_20)
@@ -362,8 +362,8 @@ def analyze_market(
                     sector_code=m.sector,
                     sector_name=sec_label,
                     strategy_type="pullback",
-                    strategy_label="🔄 強勢股拉回買點",
-                    direction="LONG (逢低佈局)",
+                    strategy_label="🔄 回檔找買點",
+                    direction="看多",
                     score=score,
                     close=m.close,
                     ret_1d_pct=m.ret_1d_pct,
@@ -397,26 +397,26 @@ def analyze_market(
             tags = []
             if m.close < m.ma_50:
                 score += 12
-                tags.append("跌破20MA與50MA")
+                tags.append("跌破月線與季線")
             else:
                 score += 6
-                tags.append("失守20MA月線")
+                tags.append("跌破月線轉弱")
 
             if m.close <= m.prev_low_20d * 1.015:
                 score += 10
-                tags.append("創近20日波段低點")
+                tags.append("創近一個月新低")
 
             if m.vol_ratio_1d >= 1.25:
                 score += 10
-                tags.append(f"放量下殺({m.vol_ratio_1d:.1f}x)")
+                tags.append(f"大量賣壓出籠({m.vol_ratio_1d:.1f}倍)")
 
             if m.hv_ratio >= 1.2:
                 score += 6
-                tags.append(f"波動率擴張({m.hv_ratio:.1f}x)")
+                tags.append("波動加劇下殺")
 
             if m.sector in weak_sectors:
                 score += 5
-                tags.append(f"弱勢板塊({sec_label.split(' ')[0]})")
+                tags.append(f"弱勢產業({sec_label.split(' ')[0]})")
 
             score = min(98, score)
             # For bearish/risk alert: stop_loss is upside invalidation (Close + 1.5*ATR), targets are downside
