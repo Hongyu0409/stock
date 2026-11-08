@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
 LINE_BROADCAST_URL = "https://api.line.me/v2/bot/message/broadcast"
+LINE_OAUTH_TOKEN_URL = "https://api.line.me/v2/oauth/accessToken"
+LINE_BOT_INFO_URL = "https://api.line.me/v2/bot/info"
 
 
 def _fmt_pct(val: float) -> str:
@@ -372,6 +374,30 @@ def build_line_flex_carousel(report: WeeklyAnalysisReport) -> Dict[str, Any]:
     }
 
 
+def _issue_channel_access_token(channel_id: str, channel_secret: str) -> Optional[str]:
+    """Issue a short-lived Channel Access Token (30-day) via LINE OAuth2 client_credentials."""
+    try:
+        resp = requests.post(
+            LINE_OAUTH_TOKEN_URL,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data={
+                "grant_type": "client_credentials",
+                "client_id": channel_id,
+                "client_secret": channel_secret,
+            },
+            timeout=15,
+        )
+        if resp.status_code == 200:
+            token = resp.json().get("access_token", "").strip()
+            if token:
+                logger.info("Successfully issued LINE Channel Access Token via Channel ID & Secret.")
+                return token
+        logger.error("Failed to issue LINE token via OAuth (%d): %s", resp.status_code, resp.text)
+    except Exception as exc:
+        logger.error("Error requesting LINE OAuth token: %s", exc)
+    return None
+
+
 def send_line_notification(
     report: WeeklyAnalysisReport,
     channel_access_token: Optional[str] = None,
@@ -380,18 +406,46 @@ def send_line_notification(
 ) -> bool:
     """Push or broadcast the report via LINE Messaging API."""
     token = (channel_access_token or os.getenv("LINE_CHANNEL_ACCESS_TOKEN") or "").strip()
+    channel_id = (os.getenv("LINE_CHANNEL_ID") or "").strip()
+    channel_secret = (os.getenv("LINE_CHANNEL_SECRET") or "").strip()
     target_ids_raw = (user_id or os.getenv("LINE_USER_ID") or "").strip()
+
+    if not token and channel_id and channel_secret:
+        token = _issue_channel_access_token(channel_id, channel_secret) or ""
 
     if not token:
         logger.warning(
-            "LINE_CHANNEL_ACCESS_TOKEN is not set. Skipping live LINE API call (see generated report & preview)."
+            "LINE_CHANNEL_ACCESS_TOKEN (or LINE_CHANNEL_ID + LINE_CHANNEL_SECRET) is not set. "
+            "Skipping live LINE API call (see generated report & preview)."
         )
         return False
 
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {token}",
-    }
+    def _make_headers(access_token: str) -> Dict[str, str]:
+        return {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {access_token}",
+        }
+
+    # Verify token & log bot info (auto-refresh token if 401 and Channel ID/Secret available)
+    try:
+        info_resp = requests.get(LINE_BOT_INFO_URL, headers=_make_headers(token), timeout=10)
+        if info_resp.status_code == 401 and channel_id and channel_secret:
+            logger.info("Stored LINE_CHANNEL_ACCESS_TOKEN expired/unauthorized; refreshing via Channel ID & Secret...")
+            refreshed = _issue_channel_access_token(channel_id, channel_secret)
+            if refreshed:
+                token = refreshed
+                info_resp = requests.get(LINE_BOT_INFO_URL, headers=_make_headers(token), timeout=10)
+        if info_resp.status_code == 200:
+            bot_info = info_resp.json()
+            logger.info(
+                "Connected to LINE Official Account Bot: %s (basicId: %s)",
+                bot_info.get("displayName", "Unknown"),
+                bot_info.get("basicId", "N/A"),
+            )
+    except Exception as exc:
+        logger.warning("Could not query LINE bot info: %s", exc)
+
+    headers = _make_headers(token)
 
     messages_payload: List[Dict[str, Any]] = []
     if mode in ("flex", "both"):

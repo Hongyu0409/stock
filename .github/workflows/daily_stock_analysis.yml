@@ -48,6 +48,8 @@ jobs:
         env:
           TZ: Asia/Taipei
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_CHANNEL_ID: ${{ secrets.LINE_CHANNEL_ID }}
+          LINE_CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
           LINE_MESSAGE_MODE: ${{ inputs.message_mode || 'both' }}
         run: |
