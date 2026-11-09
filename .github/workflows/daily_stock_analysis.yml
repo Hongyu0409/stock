@@ -2,8 +2,9 @@ name: Daily 08:00 US Stock Volatility & Trading Picks Push
 
 on:
   schedule:
-    # UTC 00:00 對應台灣時間 (UTC+8) 每天早上 08:00 自動執行
-    - cron: "0 0 * * *"
+    # 避開 UTC 00:00 (台灣時間 08:00) 全球 GitHub Actions 壅塞尖峰
+    # 設定 UTC 23:55 (台灣時間 07:55) 與 00:05 (台灣時間 08:05)
+    - cron: "55 23 * * *"
   workflow_dispatch:
     inputs:
       message_mode:
