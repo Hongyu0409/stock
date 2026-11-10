@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional
+from zoneinfo import ZoneInfo
 
 from src.data_fetcher import TickerMetrics
 
@@ -145,8 +146,10 @@ def analyze_market(
     vix_m = metrics_map.get("^VIX")
     spy_5d = spy_m.ret_5d_pct if spy_m else 0.0
 
-    report_date = spy_m.last_date if spy_m else datetime.now().strftime("%Y-%m-%d")
-    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+    now_tw = datetime.now(ZoneInfo("Asia/Taipei"))
+    us_close_date = spy_m.last_date if spy_m else now_tw.strftime("%Y-%m-%d")
+    report_date = f"{now_tw.strftime('%Y-%m-%d')}（美股 {us_close_date} 收盤）"
+    generated_at = now_tw.strftime("%Y-%m-%d %H:%M")
 
     market_regime, regime_summary = _classify_market_regime(spy_m, qqq_m, vix_m)
 

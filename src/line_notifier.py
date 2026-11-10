@@ -80,7 +80,7 @@ def format_line_text_messages(report: WeeklyAnalysisReport) -> List[str]:
 
     # Message 2: Daily Selected Stocks
     lines_2: List[str] = [
-        f"🎯 【今日精選觀察個股】({report.report_date})",
+        f"🎯 【今日精選觀察個股】{report.report_date}",
         "💡 系統依趨勢強弱自動計算參考價位（風報比 1:2）",
     ]
 
@@ -283,6 +283,7 @@ def build_line_flex_carousel(report: WeeklyAnalysisReport) -> Dict[str, Any]:
     top_sec = "、".join(f"{s.symbol}({s.ret_5d_pct:+.1f}%)" for s in report.sector_rankings[:3])
     bot_sec = "、".join(f"{s.symbol}({s.ret_5d_pct:+.1f}%)" for s in report.sector_rankings[-3:])
 
+    short_date = report.report_date.split("（")[0]
     overview_bubble: Dict[str, Any] = {
         "type": "bubble",
         "size": "mega",
@@ -294,7 +295,7 @@ def build_line_flex_carousel(report: WeeklyAnalysisReport) -> Dict[str, Any]:
             "contents": [
                 {
                     "type": "text",
-                    "text": f"📊 美股市場速報 ({report.report_date})",
+                    "text": f"📊 美股市場速報 ({short_date})",
                     "weight": "bold",
                     "size": "md",
                     "color": "#ffffff",

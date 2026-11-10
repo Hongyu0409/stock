@@ -267,6 +267,21 @@ def fetch_all_tickers(
             threads=True,
             progress=False,
         )
+        # During US Winter Time (05:00-09:20 Taiwan Time / 16:00-20:20 EST),
+        # US regular trading has already closed at 05:00 TW, but Yahoo's 1y/1d endpoint
+        # may not roll over the latest daily bar until after 20:00 EST post-market closes.
+        # Fetching 5d/1h regular-session bars (prepost=False) guarantees we always have
+        # today's 05:00 TW closing OHLCV immediately after market close.
+        raw_1h = yf.download(
+            tickers=symbols_list,
+            period="5d",
+            interval="1h",
+            group_by="ticker",
+            auto_adjust=True,
+            prepost=False,
+            threads=True,
+            progress=False,
+        )
     except Exception as exc:
         logger.error("Failed to download from Yahoo Finance (%s). Falling back to demo dataset.", exc)
         return generate_demo_metrics(ticker_meta, config)
@@ -285,9 +300,56 @@ def fetch_all_tickers(
             if isinstance(raw.columns, pd.MultiIndex):
                 if sym not in raw.columns.get_level_values(0):
                     continue
-                sub_df = raw[sym]
+                sub_df = raw[sym].copy()
             else:
-                sub_df = raw
+                sub_df = raw.copy()
+
+            sub_df = sub_df.dropna(subset=["Close", "High", "Low", "Open"])
+
+            # Merge any newer completed regular session from 1h bars if 1d bars lagged
+            if raw_1h is not None and not raw_1h.empty:
+                try:
+                    if isinstance(raw_1h.columns, pd.MultiIndex):
+                        sub_1h = raw_1h[sym].copy() if sym in raw_1h.columns.get_level_values(0) else pd.DataFrame()
+                    else:
+                        sub_1h = raw_1h.copy()
+                    sub_1h = sub_1h.dropna(subset=["Close", "High", "Low", "Open"])
+                    if not sub_1h.empty:
+                        if getattr(sub_1h.index, "tz", None) is not None:
+                            sub_1h.index = sub_1h.index.tz_convert("America/New_York")
+                        sub_1h["_date"] = sub_1h.index.strftime("%Y-%m-%d")
+                        daily_1h = sub_1h.groupby("_date").agg(
+                            {
+                                "Open": "first",
+                                "High": "max",
+                                "Low": "min",
+                                "Close": "last",
+                                "Volume": "sum",
+                            }
+                        )
+                        existing_dates = {
+                            (idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)[:10])
+                            for idx in sub_df.index
+                        }
+                        new_rows = []
+                        for d_str, row in daily_1h.iterrows():
+                            if d_str not in existing_dates and (not existing_dates or d_str > max(existing_dates)):
+                                new_rows.append((pd.Timestamp(d_str), row))
+                        if new_rows:
+                            if getattr(sub_df.index, "tz", None) is not None:
+                                sub_df.index = sub_df.index.tz_localize(None)
+                            for ts_idx, row in new_rows:
+                                sub_df.loc[ts_idx, ["Open", "High", "Low", "Close", "Volume"]] = [
+                                    row["Open"],
+                                    row["High"],
+                                    row["Low"],
+                                    row["Close"],
+                                    row["Volume"],
+                                ]
+                            sub_df = sub_df.sort_index()
+                except Exception as merge_exc:
+                    logger.debug("1h merge skipped for %s: %s", sym, merge_exc)
+
             metrics = calculate_metrics_from_df(
                 symbol=sym,
                 df=sub_df,
