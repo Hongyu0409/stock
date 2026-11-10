@@ -126,7 +126,14 @@ def main() -> int:
         or os.getenv("LINE_MESSAGE_MODE")
         or config.get("line_notification", {}).get("message_mode", "both")
     )
-    send_line_notification(report=report, mode=mode)
+    ok = send_line_notification(report=report, mode=mode)
+    has_creds = bool(
+        (os.getenv("LINE_CHANNEL_ACCESS_TOKEN") or "").strip()
+        or (os.getenv("LINE_CHANNEL_ID") or "").strip()
+    )
+    if has_creds and not ok:
+        logging.error("LINE push failed despite credentials being configured.")
+        return 1
     return 0
 
 
