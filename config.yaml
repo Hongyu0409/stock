@@ -141,3 +141,7 @@ strategy_params:
 # 5. LINE 推播設定
 line_notification:
   message_mode: "both"            # 可選 "flex" (精美卡片), "text" (純文字戰報), 或 "both"
+
+# 6. Telegram Bot 推播設定
+telegram_notification:
+  enabled: true                   # 啟用 Telegram 機器人推播

@@ -21,6 +21,7 @@ from src.line_notifier import (
     format_markdown_report,
     send_line_notification,
 )
+from src.telegram_notifier import send_telegram_notification
 
 
 def parse_args() -> argparse.Namespace:
@@ -118,7 +119,7 @@ def main() -> int:
         print("=" * 60)
 
     if args.dry_run:
-        logging.info("Dry-run mode enabled (--dry-run). Skipping LINE API push.")
+        logging.info("Dry-run mode enabled (--dry-run). Skipping notification API push.")
         return 0
 
     mode = (
@@ -126,13 +127,20 @@ def main() -> int:
         or os.getenv("LINE_MESSAGE_MODE")
         or config.get("line_notification", {}).get("message_mode", "both")
     )
-    ok = send_line_notification(report=report, mode=mode)
-    has_creds = bool(
+    ok_line = send_line_notification(report=report, mode=mode)
+    has_line_creds = bool(
         (os.getenv("LINE_CHANNEL_ACCESS_TOKEN") or "").strip()
         or (os.getenv("LINE_CHANNEL_ID") or "").strip()
     )
-    if has_creds and not ok:
+    if has_line_creds and not ok_line:
         logging.error("LINE push failed despite credentials being configured.")
+
+    ok_tg = send_telegram_notification(report=report)
+    has_tg_creds = bool((os.getenv("TELEGRAM_BOT_TOKEN") or "").strip())
+    if has_tg_creds and not ok_tg:
+        logging.warning("Telegram push could not be completed.")
+
+    if has_line_creds and not ok_line:
         return 1
     return 0
 

@@ -107,7 +107,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run US Stock Weekly Volatility Analysis & LINE Push
+      - name: Run US Stock Weekly Volatility Analysis & Push (LINE & Telegram)
         if: steps.dedup.outputs.skip != 'true'
         env:
           TZ: Asia/Taipei
@@ -116,6 +116,8 @@ jobs:
           LINE_CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
           LINE_MESSAGE_MODE: ${{ inputs.message_mode || 'both' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           if [ "${{ inputs.use_demo }}" = "true" ]; then
             python main.py --demo

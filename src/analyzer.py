@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from zoneinfo import ZoneInfo
 
+from src.company_profiles import get_company_profile
 from src.data_fetcher import TickerMetrics
 
 
@@ -64,6 +65,7 @@ class TradingPick:
     take_profit_t2: float
     take_profit_t2_pct: float
     risk_reward: str
+    company_desc: str = ""
     tags: List[str] = field(default_factory=list)
 
 
@@ -311,6 +313,7 @@ def analyze_market(
                         take_profit_t2=tp2,
                         take_profit_t2_pct=((tp2 - m.close) / m.close) * 100.0,
                         risk_reward=f"1 : {tp2_mult / sl_mult:.1f}",
+                        company_desc=get_company_profile(m.symbol, sec_label),
                         tags=tags[:4],
                     )
                 )
@@ -385,6 +388,7 @@ def analyze_market(
                     take_profit_t2=tp2,
                     take_profit_t2_pct=((tp2 - m.close) / m.close) * 100.0,
                     risk_reward=f"1 : {tp2_mult / sl_mult:.1f}",
+                    company_desc=get_company_profile(m.symbol, sec_label),
                     tags=tags[:4],
                 )
             )
@@ -453,6 +457,7 @@ def analyze_market(
                     take_profit_t2=tp2,
                     take_profit_t2_pct=((tp2 - m.close) / m.close) * 100.0,
                     risk_reward=f"1 : {tp2_mult / sl_mult:.1f}",
+                    company_desc=get_company_profile(m.symbol, sec_label),
                     tags=tags[:4],
                 )
             )

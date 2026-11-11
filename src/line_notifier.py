@@ -99,8 +99,10 @@ def format_line_text_messages(report: WeeklyAnalysisReport) -> List[str]:
                 sl_label = "建議防守停損價"
                 tp_label = "分批獲利目標價"
 
+            desc_line = f"   🏢 業務：{p.company_desc}\n" if p.company_desc else ""
             lines_2.append(
                 f"{idx_num}. 【{p.symbol}】（{p.sector_name.split(' ')[0]}）評分 {p.score}分\n"
+                f"{desc_line}"
                 f"   現價：${p.close:.2f}（昨夜 {p.ret_1d_pct:+.1f}% / 一週 {p.ret_5d_pct:+.1f}%）\n"
                 f"   📌 重點特徵：{tag_str}\n"
                 f"   🎯 參考進場區間：{p.entry_zone}\n"
@@ -183,6 +185,19 @@ def _build_pick_bubble(
                         "size": "xs",
                         "color": ret_color,
                     },
+                    *(
+                        [
+                            {
+                                "type": "text",
+                                "text": f"🏢 {p.company_desc}",
+                                "size": "xxs",
+                                "color": "#4b5563",
+                                "wrap": True,
+                            }
+                        ]
+                        if p.company_desc
+                        else []
+                    ),
                     {
                         "type": "text",
                         "text": "📌 " + ("、".join(p.tags) if p.tags else "趨勢良好"),
@@ -553,13 +568,14 @@ def format_markdown_report(report: WeeklyAnalysisReport) -> str:
         sl_col = "空單防守/壓力 (1.5xATR)" if is_short else "動態停損價 (1.5xATR)"
         tp_col = "下方目標 T1 / T2" if is_short else "停利目標 T1 / T2 (2x/3xATR)"
         md.append(
-            f"| 代號 | 板塊 | 評分 | 收盤價 | 1D / 5D 漲跌 | NATR | 參考進場區間 | {sl_col} | {tp_col} | 入選理由標籤 |"
+            f"| 代號 | 公司業務簡介 | 板塊 | 評分 | 收盤價 | 1D / 5D 漲跌 | NATR | 參考進場區間 | {sl_col} | {tp_col} | 入選理由標籤 |"
         )
-        md.append("| :--- | :--- | :---: | ---: | ---: | ---: | :--- | ---: | :--- | :--- |")
+        md.append("| :--- | :--- | :--- | :---: | ---: | ---: | ---: | :--- | ---: | :--- | :--- |")
         for p in picks:
             tags_str = "、".join(p.tags)
+            desc = p.company_desc or "-"
             md.append(
-                f"| **{p.symbol}** | {p.sector_name.split(' ')[0]} | **{p.score}** | ${p.close:.2f} | "
+                f"| **{p.symbol}** | {desc} | {p.sector_name.split(' ')[0]} | **{p.score}** | ${p.close:.2f} | "
                 f"{p.ret_1d_pct:+.1f}% / {p.ret_5d_pct:+.1f}% | {p.natr_14_pct:.1f}% | {p.entry_zone} | "
                 f"${p.stop_loss:.2f} ({p.stop_loss_pct:+.1f}%) | "
                 f"${p.take_profit_t1:.2f} ({p.take_profit_t1_pct:+.1f}%) / ${p.take_profit_t2:.2f} ({p.take_profit_t2_pct:+.1f}%) | "
