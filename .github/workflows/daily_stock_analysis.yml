@@ -25,6 +25,8 @@ on:
         required: false
         default: false
         type: boolean
+  repository_dispatch:
+    types: [daily_push]
 
 permissions:
   contents: read
