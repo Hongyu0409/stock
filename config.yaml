@@ -2,7 +2,7 @@
 
 schedule:
   timezone: "Asia/Taipei"
-  push_time: "08:00"
+  push_time: "07:00"
 
 # 1. 大盤核心指數與跨資產風險指標
 market_indices:

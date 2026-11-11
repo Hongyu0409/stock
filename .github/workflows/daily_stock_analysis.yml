@@ -1,14 +1,14 @@
-name: Daily 08:00 US Stock Volatility & Trading Picks Push
+name: Daily 07:00 US Stock Volatility & Trading Picks Push
 
 on:
   schedule:
     # 三重排程保險機制（自動防重複推播，每天只會推播成功一次）：
-    # 1. 主排程：UTC 23:50 (台灣時間 07:50) 避開整點全球佇列尖峰
-    - cron: "50 23 * * *"
-    # 2. 第一備援：UTC 00:00 (台灣時間 08:00) 若主排程被 GitHub 漏觸發則自動補發
-    - cron: "0 0 * * *"
-    # 3. 第二備援：UTC 00:15 (台灣時間 08:15) 確保萬無一失
-    - cron: "15 0 * * *"
+    # 1. 主排程：UTC 23:00 (台灣時間 07:00)
+    - cron: "0 23 * * *"
+    # 2. 第一備援：UTC 23:10 (台灣時間 07:10) 若主排程被 GitHub 偶發延遲則自動補發
+    - cron: "10 23 * * *"
+    # 3. 第二備援：UTC 23:20 (台灣時間 07:20) 雙重保險
+    - cron: "20 23 * * *"
   workflow_dispatch:
     inputs:
       message_mode:

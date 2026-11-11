@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Main entrypoint for US Stock Weekly Volatility Analysis & Daily 08:00 LINE Push."""
+"""Main entrypoint for US Stock Weekly Volatility Analysis & Daily 07:00 LINE Push."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ from src.line_notifier import (
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="美股近一週波動分析與每日推薦交易標的推播系統 (Daily 08:00 LINE Push)"
+        description="美股近一週波動分析與每日推薦交易標的推播系統 (Daily 07:00 LINE Push)"
     )
     parser.add_argument(
         "--config",
