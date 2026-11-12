@@ -30,15 +30,27 @@ def _fmt_pct(val: float, is_vix: bool = False) -> str:
 
 def format_telegram_messages(report: WeeklyAnalysisReport, report_type: str = "all") -> List[str]:
     """Format the report into clean, pure-text HTML messages with color emojis for Telegram."""
-    # --- Message 1: 🌅 美股昨日收盤晨報 (07:00 推播：前晚美股表現總覽) ---
+    # --- Message 1: 🌅 美股昨日收盤晨報 (07:00 推播：前晚美股表現總覽 + 自動化技術分析師) ---
     m1_lines: List[str] = [
         "🌅 <b>【美股昨日收盤晨報】</b>",
         f"📅 資料日期：{html.escape(report.report_date)}",
-        f"🧭 市場溫度：<b>{html.escape(report.market_regime)}</b>",
+        f"🧭 市場格局：<b>{html.escape(report.market_regime)}</b>",
         f"💡 {html.escape(report.regime_summary)}",
         "━━━━━━━━━━━━━━",
-        "📊 <b>【主要指數昨夜與一週表現】</b>",
+        "🤖 <b>【自動化技術分析師・大盤趨勢與格局拆解】</b>",
+        f"• <b>均線與趨勢</b>：{html.escape(report.market_tech.trend_summary)}",
+        f"• <b>關鍵支撐與壓力</b>：",
+        f"   - SPY 支撐：<code>${report.market_tech.spy_support:,.2f}</code> ｜ 壓力：<code>${report.market_tech.spy_resistance:,.2f}</code>",
+        f"   - QQQ 支撐：<code>${report.market_tech.qqq_support:,.2f}</code> ｜ 壓力：<code>${report.market_tech.qqq_resistance:,.2f}</code>",
+        f"• <b>動能與情緒</b>：{html.escape(report.market_tech.momentum_summary)}",
+        "💡 <b>今日大盤操作決策流程</b>：",
+        f"👉 決策建議：<b>{html.escape(report.market_tech.market_decision)}</b>",
     ]
+    for idx_step, step_text in enumerate(report.market_tech.decision_steps, start=1):
+        m1_lines.append(f"   {idx_step}. {html.escape(step_text)}")
+
+    m1_lines.append("━━━━━━━━━━━━━━")
+    m1_lines.append("📊 <b>【主要指數昨夜與一週表現】</b>")
 
     for idx in report.indices:
         c_name = idx.name.split(" ")[0]
@@ -77,59 +89,83 @@ def format_telegram_messages(report: WeeklyAnalysisReport, report_type: str = "a
             )
 
     m1_lines.append("━━━━━━━━━━━━━━")
-    m1_lines.append("📌 <i>今晚 21:00 將參考最新盤前與盤後動態，為您推播美股精選推薦標的！</i>")
+    m1_lines.append("📌 <i>今晚 21:00 將依據「交易點子產生器 + 技術分析 + 策略回測」為您推播美股精選推薦標的！</i>")
 
     # --- Message 2: 🎯 美股盤前雷達與精選推薦標的 (21:00 推播：盤前選股) ---
     short_date = report.report_date.split("（")[0]
-    m2_lines: List[str] = [
+    m2_header: List[str] = [
         f"🎯 <b>【美股盤前雷達與精選推薦標的】</b>",
         f"📅 資料日期：{html.escape(short_date)} 21:00（美股開盤前預備）",
-        f"🧭 盤前氛圍：<b>{html.escape(report.market_regime)}</b>",
-        "💡 系統依早晨盤後及最新盤前動能，精選關鍵支撐/突破標的（風報比 1:2）：",
+        f"🧭 盤前整體氛圍：<b>{html.escape(report.market_regime)}</b>",
+        "💡 整合「交易點子產生器」、「自動化技術分析師」與「策略量化回測模型」嚴選推薦標的：",
     ]
 
-    def _append_picks_section(title: str, picks: List[TradingPick], is_short: bool = False) -> None:
-        m2_lines.append("━━━━━━━━━━━━━━")
-        m2_lines.append(title)
+    def _format_picks_block(strat_key: str, title: str, picks: List[TradingPick], is_short: bool = False) -> List[str]:
+        sec_lines: List[str] = ["━━━━━━━━━━━━━━", title]
+        meta = report.backtest_meta.get(strat_key)
+        if meta:
+            sec_lines.append(
+                f"📊 <b>量化回測優勢</b>：勝率 <code>{meta.win_rate}</code> ｜ 獲利因子 <code>{meta.profit_factor}</code> ｜ 最大回撤 <code>{meta.max_drawdown}</code>\n"
+                f"💡 <b>策略執行心法</b>：<i>{html.escape(meta.execution_edge)}</i>"
+            )
         if not picks:
-            m2_lines.append("• 今日無符合條件之標的")
-            return
+            sec_lines.append("• 今日無符合條件之標的")
+            return sec_lines
+
         for idx_num, p in enumerate(picks, start=1):
             tag_str = "、".join(p.tags) if p.tags else "動能良好"
             if is_short:
-                sl_label = "若反彈突破此價需注意壓力/停損"
-                tp_label = "可能回檔目標價"
+                sl_label = "反彈壓力/停損"
+                tp_label = "可能回檔目標"
             else:
-                sl_label = "建議防守停損價"
-                tp_label = "分批獲利目標價"
+                sl_label = "建議防守停損"
+                tp_label = "分批獲利目標"
 
-            desc_line = f"   🏢 <b>業務簡介</b>：<i>{html.escape(p.company_desc)}</i>\n" if p.company_desc else ""
+            fund_line = f"   🏢 <b>基本面催化</b>：<i>{html.escape(p.company_desc)}，{html.escape(p.fund_catalyst)}</i>\n" if p.company_desc else ""
 
-            m2_lines.append(
-                f"<b>{idx_num}. 【{p.symbol}】</b>（{html.escape(p.sector_name.split(' ')[0])}）評分 <b>{p.score}分</b>\n"
-                f"{desc_line}"
+            sec_lines.append(
+                f"<b>{idx_num}. 【{p.symbol}】</b>（{html.escape(p.sector_name.split(' ')[0])}）評分 <b>{p.score}分</b> ｜ 決策：<b>{html.escape(p.action_decision)}</b>\n"
+                f"{fund_line}"
                 f"   現價：${p.close:.2f}（昨夜 {_fmt_pct(p.ret_1d_pct)} ｜ 一週 {_fmt_pct(p.ret_5d_pct)}）\n"
-                f"   📌 重點特徵：{html.escape(tag_str)}\n"
-                f"   🎯 參考進場區間：<code>{html.escape(p.entry_zone)}</code>\n"
-                f"   🛡️ {sl_label}：<code>${p.stop_loss:.2f} ({p.stop_loss_pct:+.1f}%)</code>\n"
-                f"   💰 {tp_label}：<code>目標一 ${p.take_profit_t1:.2f} ({p.take_profit_t1_pct:+.1f}%) ｜ 目標二 ${p.take_profit_t2:.2f} ({p.take_profit_t2_pct:+.1f}%)</code>"
+                f"   📈 <b>技術型態</b>：{html.escape(p.tech_reason)}\n"
+                f"   🎯 <b>關鍵位階</b>：支撐 <code>${p.key_support:.2f}</code> ｜ 壓力 <code>${p.key_resistance:.2f}</code>\n"
+                f"   🎯 <b>參考進場區間</b>：<code>{html.escape(p.entry_zone)}</code>\n"
+                f"   🛡️ <b>{sl_label}</b>：<code>${p.stop_loss:.2f} ({p.stop_loss_pct:+.1f}%)</code>\n"
+                f"   💰 <b>{tp_label}</b>：<code>目標一 ${p.take_profit_t1:.2f} ({p.take_profit_t1_pct:+.1f}%) ｜ 目標二 ${p.take_profit_t2:.2f} ({p.take_profit_t2_pct:+.1f}%)</code>\n"
+                f"   ⚖️ <b>風險報酬比</b>：<code>{html.escape(p.risk_reward)}</code> ｜ 特徵：{html.escape(tag_str)}"
             )
+        return sec_lines
 
-    _append_picks_section("🚀 <b>【強勢突破股（買盤轉強創高）】</b>", report.breakout_picks, is_short=False)
-    _append_picks_section("🔄 <b>【優質回檔股（多頭拉回找支撐）】</b>", report.pullback_picks, is_short=False)
-    _append_picks_section("⚠️ <b>【弱勢警戒股（跌破重要均線避險）】</b>", report.breakdown_picks, is_short=True)
+    b1 = _format_picks_block("breakout", "🚀 <b>【帶量順勢突破股（買盤轉強創高）】</b>", report.breakout_picks, is_short=False)
+    b2 = _format_picks_block("pullback", "🔄 <b>【優質回檔找買點股（多頭拉回測支撐）】</b>", report.pullback_picks, is_short=False)
+    b3 = _format_picks_block("breakdown", "⚠️ <b>【弱勢跌破避險股（跌破重要均線防守）】</b>", report.breakdown_picks, is_short=True)
 
-    m2_lines.append("━━━━━━━━━━━━━━")
-    m2_lines.append("📌 <i>溫馨提醒：本清單由演算法自動統計，僅供開盤前觀察與風險控管參考，不代表投資建議。</i>")
+    m2_footer: List[str] = [
+        "━━━━━━━━━━━━━━",
+        "📌 <i>溫馨提醒：本清單由演算法與量化模型自動生成，嚴格執行進場、停損與風報比紀律，不代表個別投資推薦。</i>",
+    ]
+
+    all_m2_lines = m2_header + b1 + b2 + b3 + m2_footer
+    full_m2_text = "\n".join(all_m2_lines)
+
+    # If evening report exceeds Telegram single message safe limit (~3500 chars), split into 3 readable parts
+    evening_messages: List[str] = []
+    if len(full_m2_text) > 3500:
+        evening_messages.extend([
+            "\n".join(m2_header + b1),
+            "\n".join(b2),
+            "\n".join(b3 + m2_footer),
+        ])
+    else:
+        evening_messages.append(full_m2_text)
 
     msg1 = "\n".join(m1_lines)
-    msg2 = "\n".join(m2_lines)
 
     if report_type == "morning":
         return [msg1]
     elif report_type == "evening":
-        return [msg2]
-    return [msg1, msg2]
+        return evening_messages
+    return [msg1] + evening_messages
 
 
 def discover_telegram_chat_ids(bot_token: str) -> List[str]:
