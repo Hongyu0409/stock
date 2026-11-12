@@ -33,27 +33,15 @@ def _fmt_pct(val: float, is_vix: bool = False) -> str:
 
 def format_line_text_messages(report: WeeklyAnalysisReport, report_type: str = "all") -> List[str]:
     """Format the report into mobile-friendly, easy-to-read LINE text messages with color emojis."""
-    # Message 1: 🌅 美股昨日收盤晨報 (07:00 推播：前晚美股表現總覽 + 自動化技術分析師)
+    # Message 1: 🌅 美股昨日收盤晨報 (07:00 推播 Part 1：盤勢歸納 + 當日重大新聞 + 自動化技術分析師)
     lines_1: List[str] = [
-        "🌅 【美股昨日收盤晨報】",
+        "🌅 【美股昨日收盤晨報・盤勢歸納與重大新聞】",
         f"📅 資料日期：{report.report_date}",
         f"🧭 市場格局：{report.market_regime}",
         f"💡 {report.regime_summary}",
         "━━━━━━━━━━━━━━",
-        "🤖 【自動化技術分析師・大盤趨勢與格局拆解】",
-        f"• 均線與趨勢：{report.market_tech.trend_summary}",
-        f"• 關鍵支撐與壓力：",
-        f"   - SPY 支撐：${report.market_tech.spy_support:,.2f} ｜ 壓力：${report.market_tech.spy_resistance:,.2f}",
-        f"   - QQQ 支撐：${report.market_tech.qqq_support:,.2f} ｜ 壓力：${report.market_tech.qqq_resistance:,.2f}",
-        f"• 動能與情緒：{report.market_tech.momentum_summary}",
-        "💡 今日大盤操作決策流程：",
-        f"👉 決策建議：{report.market_tech.market_decision}",
+        "📊 【主要指數昨夜與一週表現】",
     ]
-    for idx_step, step_text in enumerate(report.market_tech.decision_steps, start=1):
-        lines_1.append(f"   {idx_step}. {step_text}")
-
-    lines_1.append("━━━━━━━━━━━━━━")
-    lines_1.append("📊 【主要指數昨夜與一週表現】")
 
     for idx in report.indices:
         c_name = idx.name.split(" ")[0]
@@ -64,12 +52,37 @@ def format_line_text_messages(report: WeeklyAnalysisReport, report_type: str = "
 
     if report.macros:
         lines_1.append("━━━━━━━━━━━━━━")
-        lines_1.append("🌡️ 【市場風險與其他資產】")
+        lines_1.append("🌡️ 【市場風險與關鍵資產】")
         for m in report.macros:
             c_name = m.name.split(" ")[0]
             is_vix = "vix" in m.symbol.lower()
             lines_1.append(
                 f"• {c_name}：{m.close:,.2f}（一週 {_fmt_pct(m.ret_5d_pct, is_vix=is_vix)}）"
+            )
+
+    if report.colloquial_market_summary:
+        lines_1.append("━━━━━━━━━━━━━━")
+        lines_1.append("🤖 【昨夜大盤深度歸納（白話解讀）】")
+        lines_1.append(report.colloquial_market_summary)
+
+    lines_1.append("━━━━━━━━━━━━━━")
+    lines_1.append("🤖 【自動化技術分析師・大盤趨勢與位階診斷】")
+    lines_1.append(f"• 均線與趨勢：{report.market_tech.trend_summary}")
+    lines_1.append("• 關鍵支撐與壓力：")
+    lines_1.append(f"   - SPY 支撐：${report.market_tech.spy_support:,.2f} ｜ 壓力：${report.market_tech.spy_resistance:,.2f}")
+    lines_1.append(f"   - QQQ 支撐：${report.market_tech.qqq_support:,.2f} ｜ 壓力：${report.market_tech.qqq_resistance:,.2f}")
+    lines_1.append(f"• 動能與情緒：{report.market_tech.momentum_summary}")
+    lines_1.append(f"👉 大盤操作決策：{report.market_tech.market_decision}")
+    for idx_step, step_text in enumerate(report.market_tech.decision_steps, start=1):
+        lines_1.append(f"   {idx_step}. {step_text}")
+
+    if report.news_digest:
+        lines_1.append("━━━━━━━━━━━━━━")
+        lines_1.append("📰 【當日重大財經焦點新聞】")
+        for n_idx, news in enumerate(report.news_digest[:3], start=1):
+            lines_1.append(
+                f"{n_idx}. [{news.source}] {news.title}\n"
+                f"   💡 {news.impact}"
             )
 
     if report.sector_rankings:
@@ -82,17 +95,31 @@ def format_line_text_messages(report: WeeklyAnalysisReport, report_type: str = "
         lines_1.append(f"🔥 資金流入（前三強）：{t_str}")
         lines_1.append(f"❄️ 資金流出（前三弱）：{b_str}")
 
-    if report.volatility_alerts:
-        lines_1.append("━━━━━━━━━━━━━━")
-        lines_1.append("⚡ 【昨夜與近一週波動劇烈個股】")
-        for v in report.volatility_alerts[:4]:
-            lines_1.append(
-                f"• {v.symbol}（${v.close:.2f}）一週 {_fmt_pct(v.ret_5d_pct)}\n"
-                f"  高低點震盪幅度：{v.week_range_pct:.1f}%"
+    # --- Message 2 (Morning Part 2): 🎯 【今天值得密切注意的焦點標的・實戰看盤筆記】 ---
+    lines_noteworthy: List[str] = []
+    if report.noteworthy_tickers:
+        short_date_morning = report.report_date.split("（")[0]
+        lines_noteworthy.extend([
+            "🎯 【今天值得密切注意的焦點標的・實戰看盤筆記】",
+            f"📅 適用交易日：{short_date_morning}（白話實戰解析・越詳細越好）",
+            "💡 精選全市場最具代表性之話題焦點、多頭突破、拉回有守與破位警戒標的：",
+        ])
+        for idx_nt, t in enumerate(report.noteworthy_tickers, start=1):
+            lines_noteworthy.append("━━━━━━━━━━━━━━")
+            lines_noteworthy.append(
+                f"{idx_nt}. 【{t.symbol}】{t.name}（{t.sector_name.split(' ')[0]}）｜ 決策：{t.decision_badge}\n"
+                f"   類別：{t.focus_type}\n"
+                f"   現價：${t.close:.2f}（昨夜 {_fmt_pct(t.ret_1d_pct)} ｜ 一週 {_fmt_pct(t.ret_5d_pct)} ｜ 成交量 {t.vol_ratio_1d:.1f}x）\n"
+                f"   📌 為什麼今天一定要盯它？（白話核心解析）：\n"
+                f"   {t.why_noteworthy}\n"
+                f"   📈 技術位階白話診斷：\n"
+                f"   {t.tech_status_plain}\n"
+                f"   🎯 關鍵位階：支撐 ${t.key_support:.2f} ｜ 壓力 ${t.key_resistance:.2f}\n"
+                f"   💡 今日實戰看盤指南：\n"
+                f"   {t.today_action_plan}"
             )
-
-    lines_1.append("━━━━━━━━━━━━━━")
-    lines_1.append("📌 今晚 21:00 將依據「交易點子產生器 + 技術分析 + 策略回測」為您推播美股精選推薦標的！")
+        lines_noteworthy.append("━━━━━━━━━━━━━━")
+        lines_noteworthy.append("📌 今晚 21:00 將依據最新盤前與盤後數據，為您推播完整美股精選推薦標的（含交易點子產生器與量化回測）！")
 
     # Message 2: 🎯 美股盤前雷達與精選推薦標的 (21:00 推播：盤前選股)
     short_date = report.report_date.split("（")[0]
@@ -125,6 +152,7 @@ def format_line_text_messages(report: WeeklyAnalysisReport, report_type: str = "
                 tp_label = "分批獲利目標"
 
             fund_line = f"   🏢 基本面催化：{p.company_desc}，{p.fund_catalyst}\n" if p.company_desc else ""
+
             sec_lines.append(
                 f"{idx_num}. 【{p.symbol}】（{p.sector_name.split(' ')[0]}）評分 {p.score}分 ｜ 決策：{p.action_decision}\n"
                 f"{fund_line}"
@@ -158,13 +186,15 @@ def format_line_text_messages(report: WeeklyAnalysisReport, report_type: str = "
     else:
         evening_msgs.append(full_msg_2[:4900])
 
-    msg1 = "\n".join(lines_1)[:4900]
+    morning_msgs: List[str] = ["\n".join(lines_1)[:4900]]
+    if lines_noteworthy:
+        morning_msgs.append("\n".join(lines_noteworthy)[:4900])
 
     if report_type == "morning":
-        return [msg1]
+        return morning_msgs
     elif report_type == "evening":
         return evening_msgs
-    return [msg1] + evening_msgs
+    return morning_msgs + evening_msgs
 
 
 def _build_pick_bubble(
@@ -589,14 +619,39 @@ def format_markdown_report(report: WeeklyAnalysisReport) -> str:
         f"> **大盤決策**：**{report.market_tech.market_decision}** ｜ {report.regime_summary}",
         "",
         "---",
-        "## 1. 🤖 自動化技術分析師・大盤結構與操作決策流程",
+        "## 1. 🤖 昨夜大盤深度歸納（白話解讀）與重大新聞焦點",
+        f"### 💡 大盤白話總評：\n{report.colloquial_market_summary}",
+        "",
+        "### 📰 當日重大財經焦點新聞：",
+    ]
+    for n_idx, news in enumerate(report.news_digest[:4], start=1):
+        md.append(f"{n_idx}. **[{news.source}] {news.title}**\n   - *{news.impact}*")
+
+    md.extend([
+        "",
+        "---",
+        "## 2. 🎯 今日值得密切注意的焦點標的・實戰看盤筆記",
+        "| 代號 | 標的名稱 | 板塊 | 決策 | 類別 | 最新現價 | 1D / 5D 漲跌 | 關鍵支撐/壓力 | 白話看盤指南 |",
+        "| :--- | :--- | :--- | :---: | :---: | ---: | ---: | :--- | :--- |",
+    ])
+    for t in report.noteworthy_tickers:
+        md.append(
+            f"| **{t.symbol}** | {t.name} | {t.sector_name.split(' ')[0]} | **{t.decision_badge}** | {t.focus_type} | "
+            f"${t.close:.2f} | {t.ret_1d_pct:+.1f}% / {t.ret_5d_pct:+.1f}% | 支撐 ${t.key_support:.2f} / 壓力 ${t.key_resistance:.2f} | "
+            f"**看點**：{t.why_noteworthy}<br>**策略**：{t.today_action_plan} |"
+        )
+
+    md.extend([
+        "",
+        "---",
+        "## 3. 🤖 自動化技術分析師・大盤結構與操作決策流程",
         f"- **均線與趨勢格局**：{report.market_tech.trend_summary}",
         f"- **標普500 (SPY)**：關鍵支撐 `${report.market_tech.spy_support:,.2f}` ｜ 關鍵壓力 `${report.market_tech.spy_resistance:,.2f}`",
         f"- **那斯達克 (QQQ)**：關鍵支撐 `${report.market_tech.qqq_support:,.2f}` ｜ 關鍵壓力 `${report.market_tech.qqq_resistance:,.2f}`",
         f"- **動能與市場情緒**：{report.market_tech.momentum_summary}",
         "",
         "### 💡 今日大盤逐步決策流程：",
-    ]
+    ])
     for idx_step, step_text in enumerate(report.market_tech.decision_steps, start=1):
         md.append(f"{idx_step}. {step_text}")
 
@@ -604,7 +659,7 @@ def format_markdown_report(report: WeeklyAnalysisReport) -> str:
         [
             "",
             "---",
-            "## 2. 📊 四大指數與跨資產近一週波動總覽",
+            "## 4. 📊 四大指數與跨資產近一週波動總覽",
             "| 代號 | 名稱 | 最新收盤 | 單日漲跌 (1D) | 近一週漲跌 (5D) | 近一週振幅 | 日均真實波動 (NATR) | RSI(14) | 20MA 乖離 |",
             "| :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
@@ -621,7 +676,7 @@ def format_markdown_report(report: WeeklyAnalysisReport) -> str:
         [
             "",
             "---",
-            "## 3. 🔄 11 大產業板塊資金輪動排行 (依近 5 日表現排序)",
+            "## 5. 🔄 11 大產業板塊資金輪動排行 (依近 5 日表現排序)",
             "| 排名 | 板塊代號 | 板塊名稱 | 收盤價 | 單日漲跌 | 近5日漲跌 | 相對標普強弱 (RS) | 週振幅 | 量能比 (1D/20MA) |",
             "| :---: | :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
@@ -637,7 +692,7 @@ def format_markdown_report(report: WeeklyAnalysisReport) -> str:
         [
             "",
             "---",
-            "## 4. ⚡ 近一週個股波動異常 & 爆量雷達",
+            "## 6. ⚡ 近一週個股波動異常 & 爆量雷達",
             "| 代號 | 所屬板塊 | 收盤價 | 1D 漲跌 | 5D 漲跌 | 週振幅 | 5日年化波動 (HV5) | 波動放大比 (HV5/HV20) | 量能比 | 異動觸發原因 |",
             "| :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | :--- |",
         ]
@@ -654,7 +709,7 @@ def format_markdown_report(report: WeeklyAnalysisReport) -> str:
             [
                 "",
                 "---",
-                "## 5. 📈 交易策略回測分析師・量化模型表現",
+                "## 7. 📈 交易策略回測分析師・量化模型表現",
                 "| 策略模型 | 歷史勝率 | 獲利因子 (Profit Factor) | 最大回撤 (Max DD) | 回測樣本次數 | 核心執行優勢與執行紀律 |",
                 "| :--- | :---: | :---: | :---: | :---: | :--- |",
             ]
@@ -664,7 +719,7 @@ def format_markdown_report(report: WeeklyAnalysisReport) -> str:
                 f"| **{bm.strategy_name}** | `{bm.win_rate}` | `{bm.profit_factor}` | `{bm.max_drawdown}` | {bm.trade_count} | {bm.execution_edge} |"
             )
 
-    md.extend(["", "---", "## 6. 🎯 每日精選交易推薦標的 (交易點子產生器 + 自動化技術分析)"])
+    md.extend(["", "---", "## 8. 🎯 每日精選交易推薦標的 (交易點子產生器 + 自動化技術分析)"])
 
     def _md_picks_table(strat_key: str, section_title: str, desc: str, picks: List[TradingPick], is_short: bool = False) -> None:
         md.append(f"### {section_title}")

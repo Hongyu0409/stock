@@ -30,27 +30,15 @@ def _fmt_pct(val: float, is_vix: bool = False) -> str:
 
 def format_telegram_messages(report: WeeklyAnalysisReport, report_type: str = "all") -> List[str]:
     """Format the report into clean, pure-text HTML messages with color emojis for Telegram."""
-    # --- Message 1: 🌅 美股昨日收盤晨報 (07:00 推播：前晚美股表現總覽 + 自動化技術分析師) ---
+    # --- Message 1: 🌅 美股昨日收盤晨報 (07:00 推播 Part 1：盤勢歸納 + 重大新聞 + 自動化技術分析師) ---
     m1_lines: List[str] = [
-        "🌅 <b>【美股昨日收盤晨報】</b>",
+        "🌅 <b>【美股昨日收盤晨報・盤勢歸納與重大新聞】</b>",
         f"📅 資料日期：{html.escape(report.report_date)}",
         f"🧭 市場格局：<b>{html.escape(report.market_regime)}</b>",
         f"💡 {html.escape(report.regime_summary)}",
         "━━━━━━━━━━━━━━",
-        "🤖 <b>【自動化技術分析師・大盤趨勢與格局拆解】</b>",
-        f"• <b>均線與趨勢</b>：{html.escape(report.market_tech.trend_summary)}",
-        f"• <b>關鍵支撐與壓力</b>：",
-        f"   - SPY 支撐：<code>${report.market_tech.spy_support:,.2f}</code> ｜ 壓力：<code>${report.market_tech.spy_resistance:,.2f}</code>",
-        f"   - QQQ 支撐：<code>${report.market_tech.qqq_support:,.2f}</code> ｜ 壓力：<code>${report.market_tech.qqq_resistance:,.2f}</code>",
-        f"• <b>動能與情緒</b>：{html.escape(report.market_tech.momentum_summary)}",
-        "💡 <b>今日大盤操作決策流程</b>：",
-        f"👉 決策建議：<b>{html.escape(report.market_tech.market_decision)}</b>",
+        "📊 <b>【主要指數昨夜與一週表現】</b>",
     ]
-    for idx_step, step_text in enumerate(report.market_tech.decision_steps, start=1):
-        m1_lines.append(f"   {idx_step}. {html.escape(step_text)}")
-
-    m1_lines.append("━━━━━━━━━━━━━━")
-    m1_lines.append("📊 <b>【主要指數昨夜與一週表現】</b>")
 
     for idx in report.indices:
         c_name = idx.name.split(" ")[0]
@@ -61,12 +49,37 @@ def format_telegram_messages(report: WeeklyAnalysisReport, report_type: str = "a
 
     if report.macros:
         m1_lines.append("━━━━━━━━━━━━━━")
-        m1_lines.append("🌡️ <b>【市場風險與其他資產】</b>")
+        m1_lines.append("🌡️ <b>【市場風險與關鍵資產】</b>")
         for m in report.macros:
             c_name = m.name.split(" ")[0]
             is_vix = "vix" in m.symbol.lower()
             m1_lines.append(
                 f"• {html.escape(c_name)}：{m.close:,.2f}（一週 {_fmt_pct(m.ret_5d_pct, is_vix=is_vix)}）"
+            )
+
+    if report.colloquial_market_summary:
+        m1_lines.append("━━━━━━━━━━━━━━")
+        m1_lines.append("🤖 <b>【昨夜大盤深度歸納（白話解讀）】</b>")
+        m1_lines.append(html.escape(report.colloquial_market_summary))
+
+    m1_lines.append("━━━━━━━━━━━━━━")
+    m1_lines.append("🤖 <b>【自動化技術分析師・大盤趨勢與位階診斷】</b>")
+    m1_lines.append(f"• <b>均線與趨勢</b>：{html.escape(report.market_tech.trend_summary)}")
+    m1_lines.append("• <b>關鍵支撐與壓力</b>：")
+    m1_lines.append(f"   - SPY 支撐：<code>${report.market_tech.spy_support:,.2f}</code> ｜ 壓力：<code>${report.market_tech.spy_resistance:,.2f}</code>")
+    m1_lines.append(f"   - QQQ 支撐：<code>${report.market_tech.qqq_support:,.2f}</code> ｜ 壓力：<code>${report.market_tech.qqq_resistance:,.2f}</code>")
+    m1_lines.append(f"• <b>動能與情緒</b>：{html.escape(report.market_tech.momentum_summary)}")
+    m1_lines.append(f"👉 <b>大盤操作決策</b>：<b>{html.escape(report.market_tech.market_decision)}</b>")
+    for idx_step, step_text in enumerate(report.market_tech.decision_steps, start=1):
+        m1_lines.append(f"   {idx_step}. {html.escape(step_text)}")
+
+    if report.news_digest:
+        m1_lines.append("━━━━━━━━━━━━━━")
+        m1_lines.append("📰 <b>【當日重大財經焦點新聞】</b>")
+        for n_idx, news in enumerate(report.news_digest[:3], start=1):
+            m1_lines.append(
+                f"{n_idx}. <b>[{html.escape(news.source)}] {html.escape(news.title)}</b>\n"
+                f"   💡 <i>{html.escape(news.impact)}</i>"
             )
 
     if report.sector_rankings:
@@ -79,17 +92,31 @@ def format_telegram_messages(report: WeeklyAnalysisReport, report_type: str = "a
         m1_lines.append(f"🔥 資金流入（前三強）：{html.escape(t_str)}")
         m1_lines.append(f"❄️ 資金流出（前三弱）：{html.escape(b_str)}")
 
-    if report.volatility_alerts:
-        m1_lines.append("━━━━━━━━━━━━━━")
-        m1_lines.append("⚡ <b>【昨夜與近一週波動劇烈個股】</b>")
-        for a in report.volatility_alerts[:4]:
-            m1_lines.append(
-                f"• <b>{a.symbol}</b>（${a.close:.2f}）一週 {_fmt_pct(a.ret_5d_pct)}\n"
-                f"   高低點震盪幅度：{a.week_range_pct:.1f}%"
+    # --- Message 2 (Morning Part 2): 🎯 【今天值得密切注意的焦點標的・實戰看盤筆記】 ---
+    m_noteworthy_lines: List[str] = []
+    if report.noteworthy_tickers:
+        short_date_morning = report.report_date.split("（")[0]
+        m_noteworthy_lines.extend([
+            "🎯 <b>【今天值得密切注意的焦點標的・實戰看盤筆記】</b>",
+            f"📅 適用交易日：{html.escape(short_date_morning)}（白話實戰解析・越詳細越好）",
+            "💡 精選全市場最具代表性之話題焦點、多頭突破、拉回有守與破位警戒標的：",
+        ])
+        for idx_nt, t in enumerate(report.noteworthy_tickers, start=1):
+            m_noteworthy_lines.append("━━━━━━━━━━━━━━")
+            m_noteworthy_lines.append(
+                f"<b>{idx_nt}. 【{t.symbol}】{html.escape(t.name)}</b>（{html.escape(t.sector_name.split(' ')[0])}）｜ 決策：<b>{html.escape(t.decision_badge)}</b>\n"
+                f"   類別：<b>{html.escape(t.focus_type)}</b>\n"
+                f"   現價：<b>${t.close:.2f}</b>（昨夜 {_fmt_pct(t.ret_1d_pct)} ｜ 一週 {_fmt_pct(t.ret_5d_pct)} ｜ 成交量 {t.vol_ratio_1d:.1f}x）\n"
+                f"   📌 <b>為什麼今天一定要盯它？（白話核心解析）</b>：\n"
+                f"   <i>{html.escape(t.why_noteworthy)}</i>\n"
+                f"   📈 <b>技術位階白話診斷</b>：\n"
+                f"   {html.escape(t.tech_status_plain)}\n"
+                f"   🎯 <b>關鍵位階</b>：支撐 <code>${t.key_support:.2f}</code> ｜ 壓力 <code>${t.key_resistance:.2f}</code>\n"
+                f"   💡 <b>今日實戰看盤指南</b>：\n"
+                f"   {html.escape(t.today_action_plan)}"
             )
-
-    m1_lines.append("━━━━━━━━━━━━━━")
-    m1_lines.append("📌 <i>今晚 21:00 將依據「交易點子產生器 + 技術分析 + 策略回測」為您推播美股精選推薦標的！</i>")
+        m_noteworthy_lines.append("━━━━━━━━━━━━━━")
+        m_noteworthy_lines.append("📌 <i>今晚 21:00 將依據最新盤前與盤後數據，為您推播完整美股精選推薦標的（含交易點子產生器與量化回測）！</i>")
 
     # --- Message 2: 🎯 美股盤前雷達與精選推薦標的 (21:00 推播：盤前選股) ---
     short_date = report.report_date.split("（")[0]
@@ -159,13 +186,15 @@ def format_telegram_messages(report: WeeklyAnalysisReport, report_type: str = "a
     else:
         evening_messages.append(full_m2_text)
 
-    msg1 = "\n".join(m1_lines)
+    morning_messages = ["\n".join(m1_lines)]
+    if m_noteworthy_lines:
+        morning_messages.append("\n".join(m_noteworthy_lines))
 
     if report_type == "morning":
-        return [msg1]
+        return morning_messages
     elif report_type == "evening":
         return evening_messages
-    return [msg1] + evening_messages
+    return morning_messages + evening_messages
 
 
 def discover_telegram_chat_ids(bot_token: str) -> List[str]:

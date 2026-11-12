@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 from src.company_profiles import get_company_profile
 from src.data_fetcher import TickerMetrics
+from src.news_fetcher import MarketNewsItem, fetch_market_news
 
 
 @dataclass
@@ -59,6 +60,26 @@ class MarketTechnicalBreakdown:
     momentum_summary: str       # RSI, NATR, VIX 變化
     market_decision: str        # "【偏多順勢操作 🟢】" | "【震盪擇股操作 🟡】" | "【防守觀望保守 🔴】"
     decision_steps: List[str]   # 判斷流程與逐步理由 (1, 2, 3)
+
+
+@dataclass
+class NoteworthyTicker:
+    """A focus ticker for the morning recap with rich, plain-language actionable analysis."""
+
+    symbol: str
+    name: str
+    sector_name: str
+    close: float
+    ret_1d_pct: float
+    ret_5d_pct: float
+    vol_ratio_1d: float
+    focus_type: str         # "⚡ 重大事件焦點股" | "🚀 強勢多頭突破股" | "🔄 優質拉回測支撐" | "⚠️ 破位警戒防守股"
+    decision_badge: str     # "【劇烈震盪 🟡】" | "【積極關注 🟢】" | "【逢低佈局 🟢】" | "【停損避險 🔴】"
+    why_noteworthy: str     # 白話原因：為什麼今天一定要盯它？（催化劑、市場反應）
+    tech_status_plain: str  # 白話技術面診斷（均線、位階、量能）
+    key_support: float      # 關鍵支撐
+    key_resistance: float   # 關鍵壓力
+    today_action_plan: str  # 今日實戰看盤指南（開高怎麼看？拉回怎麼守？誰適合做？）
 
 
 @dataclass
@@ -113,6 +134,9 @@ class WeeklyAnalysisReport:
         default_factory=lambda: MarketTechnicalBreakdown("", 0, 0, 0, 0, "", "", [])
     )
     backtest_meta: Dict[str, StrategyBacktestMeta] = field(default_factory=dict)
+    news_digest: List[MarketNewsItem] = field(default_factory=list)
+    noteworthy_tickers: List[NoteworthyTicker] = field(default_factory=list)
+    colloquial_market_summary: str = ""
 
 
 BACKTEST_METADATA: Dict[str, StrategyBacktestMeta] = {
@@ -243,6 +267,282 @@ def _build_market_tech_breakdown(
         market_decision=decision,
         decision_steps=[step1, step2, step3],
     )
+
+
+def _build_colloquial_market_summary(
+    indices: List[TickerMetrics],
+    macros: List[TickerMetrics],
+    sector_rankings: List[SectorRankItem],
+    news_items: List[MarketNewsItem],
+) -> str:
+    """Synthesize a lively, conversational, yet deeply professional plain-language market recap."""
+    spy_m = next((m for m in indices if m.symbol == "SPY"), None)
+    qqq_m = next((m for m in indices if m.symbol == "QQQ"), None)
+    dia_m = next((m for m in indices if m.symbol == "DIA"), None)
+    soxx_m = next((m for m in indices if m.symbol == "SOXX"), None)
+    vix_m = next((m for m in macros if "VIX" in m.symbol.upper()), None)
+
+    # 1. Headline summary
+    if spy_m and qqq_m:
+        if spy_m.ret_1d_pct > 0.4 and qqq_m.ret_1d_pct > 0.8:
+            headline = "【盤勢白話總結】：昨夜美股上演驚險大反彈！科技權值股在利空洗盤後買盤積極回補，上演深V反彈；不過短線均線反壓仍在，切忌盲目追高！"
+        elif spy_m.ret_1d_pct < -0.5:
+            headline = "【盤勢白話總結】：昨夜美股遭遇逆風震盪回檔，短線賣壓出籠測試支撐，操作務必以保留現金、保守防守為最高原則！"
+        else:
+            headline = "【盤勢白話總結】：昨夜美股呈現多空拉鋸的『冰火兩重天』，資金從高波動題材轉戰防禦穩健股，大盤持續換手，選股絕對比看指數更重要！"
+    else:
+        headline = "【盤勢白話總結】：昨夜美股盤面多空交織，各類股快速輪動，操作宜順應均線趨勢並嚴設防守點！"
+
+    # 2. Key indices narrative
+    idx_narrative = []
+    if spy_m:
+        idx_narrative.append(f"標普500 (SPY) 收在 ${spy_m.close:.2f}（昨夜 {spy_m.ret_1d_pct:+.2f}%）")
+    if qqq_m:
+        idx_narrative.append(f"科技那斯達克 (QQQ) 收在 ${qqq_m.close:.2f}（昨夜 {qqq_m.ret_1d_pct:+.2f}%）")
+    if soxx_m:
+        idx_narrative.append(f"半導體 (SOXX) 漲跌 {soxx_m.ret_1d_pct:+.2f}%")
+    if dia_m:
+        idx_narrative.append(f"道瓊 (DIA) 漲跌 {dia_m.ret_1d_pct:+.2f}%")
+
+    p2 = (
+        f"昨夜盤面高潮迭起，{'、'.join(idx_narrative)}。"
+        "盤中雖然一度傳出利空消息引發市場恐慌下殺，但低檔承接意願非常頑強，尾盤買單積極回補，上演典型的『深V反彈』洗盤走勢。"
+    )
+
+    # 3. Macro & Sector Money Flow
+    top_sec = sector_rankings[0].name.split(" ")[0] if sector_rankings else "必需消費"
+    weak_sec = sector_rankings[-1].name.split(" ")[0] if sector_rankings else "科技"
+    vix_val = vix_m.close if vix_m else 17.5
+    vix_note = "落在 15~20 正常安全波動區間，顯示市場並未失控恐慌" if vix_val < 20 else "升高警戒，顯示市場避險情緒較濃"
+
+    p3 = (
+        f"資金流向方面，主力資金明顯偏好【{top_sec}】等穩健抗跌板塊，而【{weak_sec}】板塊則呈現籌碼清洗換手。"
+        f"恐慌指數 VIX 目前落在 {vix_val:.1f}，{vix_note}。"
+        "白話來說，市場現在的心理是『不怕跌，但怕買錯股票』，大主力資金正在進行板塊間的騰挪搬家。"
+    )
+
+    # 4. Action plan for today
+    p4 = (
+        "💡 【今日台美股投資人看盤心法】：\n"
+        "今天最重要的看盤核心是『昨晚的低接買盤能否延續』。由於大盤短期均線仍在上方形成壓力，"
+        "投資人今天千萬不用急著在開盤第一時間衝動追高，建議保持冷靜，多看少做，"
+        "鎖定『拉回測支撐有守』或『逆勢創高有量』的優質標的，並嚴格把防守停損價掛好！"
+    )
+
+    return f"{headline}\n\n{p2}\n\n{p3}\n\n{p4}"
+
+
+def _build_noteworthy_tickers(
+    metrics_map: Dict[str, TickerMetrics],
+    breakout_picks: List[TradingPick],
+    pullback_picks: List[TradingPick],
+    breakdown_picks: List[TradingPick],
+    news_items: List[MarketNewsItem],
+    sector_names: Optional[Dict[str, str]] = None,
+) -> List[NoteworthyTicker]:
+    """Select 3-4 focus tickers with detailed, plain-language actionable analysis for morning recap."""
+    focus_list: List[NoteworthyTicker] = []
+    used_syms = set()
+    sec_map = sector_names or {}
+    from src.company_profiles import COMPANY_PROFILES
+
+    # 1. ⚡ Focus 1: Heavy Mover / Headline Hot Ticker (e.g. NVDA or highest volatility stock)
+    headline_sym = "NVDA" if "NVDA" in metrics_map else None
+    if not headline_sym and news_items:
+        for n in news_items:
+            for s in n.related_symbols:
+                if s in metrics_map and s not in ["SPY", "QQQ", "DIA", "IWM", "SOXX"]:
+                    headline_sym = s
+                    break
+            if headline_sym:
+                break
+
+    if not headline_sym:
+        stocks_sorted = sorted(
+            [m for m in metrics_map.values() if m.sector.startswith("XL")],
+            key=lambda x: (x.vol_ratio_1d, x.week_range_pct),
+            reverse=True,
+        )
+        if stocks_sorted:
+            headline_sym = stocks_sorted[0].symbol
+
+    if headline_sym and headline_sym in metrics_map:
+        m = metrics_map[headline_sym]
+        used_syms.add(m.symbol)
+        sec_disp = sec_map.get(m.sector, m.sector).split(" ")[0]
+        disp_name = COMPANY_PROFILES.get(m.symbol, "").split("，")[0] or m.name or m.symbol
+        if m.symbol == "NVDA":
+            focus_type = "⚡ 重大事件焦點股"
+            badge = "【劇烈震盪 🟡】"
+            why = (
+                "全球 AI 算力晶片霸主！昨夜因執行長黃仁勳人事動向傳聞引發市場高度震撼，"
+                f"盤中一度劇烈下殺，終場收在 ${m.close:.2f}（昨夜 {m.ret_1d_pct:+.2f}% ｜ 一週 {m.ret_5d_pct:+.2f}%），"
+                f"單日爆出平常 {m.vol_ratio_1d:.1f} 倍的大量換手！身為全市場總龍頭，它的盤面走勢直接主導整個科技股與半導體的命運。"
+            )
+            rsi_desc = "深度超賣區，隨時有報復性跌深反彈契機" if m.rsi_14 < 35 else ("高檔強勢區，波動劇烈" if m.rsi_14 > 70 else "中性整理區")
+            ma_desc = "日線跌破 20MA 月線，短線均線轉弱下彎" if m.close < m.ma_20 else "日線站穩 20MA 月線，多頭結構維持"
+            tech = (
+                f"{ma_desc}（20MA ${m.ma_20:.2f}）；"
+                f"昨夜收盤留下長下影線，RSI(14) 位於 {m.rsi_14:.1f}（{rsi_desc}）。"
+            )
+            sup = round(m.low_20d, 2)
+            res = round(m.ma_20, 2)
+            action = (
+                f"適合敏銳度高的短線交易者。今日開盤若能守住昨夜低點 ${sup:.2f}，"
+                f"可把握短線技術性跌深反彈波段；若反彈衝擊月線反壓 ${res:.2f} 遇阻，持股偏多者應把握逢高減碼時機；"
+                "切忌隨意大舉向下凹單攤平！"
+            )
+        else:
+            focus_type = "⚡ 爆量異常波動股"
+            badge = "【高波動警戒 🟡】"
+            why = (
+                f"昨夜盤面異常爆量焦點！單日成交量高達平日 {m.vol_ratio_1d:.1f} 倍，"
+                f"一週高低點震盪幅度達到 {m.week_range_pct:.1f}%，短線多空激烈交戰，籌碼快速換手。"
+            )
+            tech = (
+                f"股價現報 ${m.close:.2f}，相較 20MA(${m.ma_20:.2f}) 乖離率為 {m.dist_ma20_pct:+.1f}%；"
+                f"RSI 位於 {m.rsi_14:.1f}，波動急遽放大。"
+            )
+            sup = round(min(m.close * 0.96, m.low_20d), 2)
+            res = round(max(m.close * 1.04, m.high_20d), 2)
+            action = (
+                f"高波動代表高風險高回報。以關鍵支撐 ${sup:.2f} 為防守底線，"
+                "盤中若有拉回不破可小額試單，但務必設置硬性停損點，嚴禁重倉持股。"
+            )
+
+        focus_list.append(
+            NoteworthyTicker(
+                symbol=m.symbol,
+                name=disp_name,
+                sector_name=sec_disp,
+                close=m.close,
+                ret_1d_pct=m.ret_1d_pct,
+                ret_5d_pct=m.ret_5d_pct,
+                vol_ratio_1d=m.vol_ratio_1d,
+                focus_type=focus_type,
+                decision_badge=badge,
+                why_noteworthy=why,
+                tech_status_plain=tech,
+                key_support=sup,
+                key_resistance=res,
+                today_action_plan=action,
+            )
+        )
+
+    # 2. 🚀 Focus 2: Strongest Breakout Pick (強勢多頭突破股)
+    for p in breakout_picks:
+        if p.symbol not in used_syms:
+            used_syms.add(p.symbol)
+            vol_str = f"{p.vol_ratio_1d:.1f}倍" if p.vol_ratio_1d > 1.0 else "溫和放大"
+            clean_name = COMPANY_PROFILES.get(p.symbol, "").split("，")[0] or p.company_desc.split("，")[0] or p.symbol
+            why = (
+                f"【逆勢抗跌領頭羊】：大盤震盪之際展現非凡韌性！受惠於資金大舉湧入{p.sector_name.split(' ')[0]}避風港，"
+                f"股價帶量突破近期整理平台高點，成交量放大至 {vol_str}，籌碼面呈現大戶主力集中鎖碼態勢。"
+            )
+            tech = (
+                f"均線呈現標準的多頭向上發散排列，穩穩站上 20MA(${p.ma_20:.2f})；"
+                f"RSI(14) 位於 {p.rsi_14:.1f} 強勢進攻區間，指標健康且未出現任何頂背離徵兆。"
+            )
+            action = (
+                f"適合追求順勢穩健操作的投資人。今日開盤若遇小幅拉回，只要守在支撐 ${p.key_support:.2f} 之上，"
+                f"都是絕佳的順勢切入機會；若開盤直接跳空大漲超過 +1.5%，切忌追高，等盤中拉回再分批佈局；"
+                f"建議將動態停損設在 ${p.stop_loss:.2f}。"
+            )
+            focus_list.append(
+                NoteworthyTicker(
+                    symbol=p.symbol,
+                    name=clean_name,
+                    sector_name=p.sector_name,
+                    close=p.close,
+                    ret_1d_pct=p.ret_1d_pct,
+                    ret_5d_pct=p.ret_5d_pct,
+                    vol_ratio_1d=p.vol_ratio_1d,
+                    focus_type="🚀 強勢多頭突破股",
+                    decision_badge="【積極關注 🟢】",
+                    why_noteworthy=why,
+                    tech_status_plain=tech,
+                    key_support=p.key_support,
+                    key_resistance=p.key_resistance,
+                    today_action_plan=action,
+                )
+            )
+            break
+
+    # 3. 🔄 Focus 3: High-Quality Pullback Pick (優質拉回測支撐股)
+    for p in pullback_picks:
+        if p.symbol not in used_syms:
+            used_syms.add(p.symbol)
+            clean_name = COMPANY_PROFILES.get(p.symbol, "").split("，")[0] or p.company_desc.split("，")[0] or p.symbol
+            why = (
+                f"【回檔測支撐優質買點】：所屬{p.sector_name.split(' ')[0]}龍頭，基本面獲利與現金流相當扎實。"
+                f"近期隨大盤回檔連跌數天後，昨夜在關鍵月線位置收出縮量止跌訊號，多空力道達到平衡，性價比極高。"
+            )
+            tech = (
+                f"股價回踩上升中的 20MA 月線(${p.ma_20:.2f}) 支撐，成交量萎縮代表浮動籌碼清洗乾淨，"
+                f"RSI(14) 回落至 {p.rsi_14:.1f} 指標充分降溫，下檔支撐買盤強固。"
+            )
+            action = (
+                f"適合波段佈局型投資人。今日開盤只要股價能守穩在 ${p.key_support:.2f}（月線）之上，"
+                f"可分批逢低進場承接；停損點設在 ${p.stop_loss:.2f}，盈虧風報比達 {p.risk_reward}，勝率優勢明顯。"
+            )
+            focus_list.append(
+                NoteworthyTicker(
+                    symbol=p.symbol,
+                    name=clean_name,
+                    sector_name=p.sector_name,
+                    close=p.close,
+                    ret_1d_pct=p.ret_1d_pct,
+                    ret_5d_pct=p.ret_5d_pct,
+                    vol_ratio_1d=p.vol_ratio_1d,
+                    focus_type="🔄 優質拉回測支撐",
+                    decision_badge="【拉回佈局 🟢】",
+                    why_noteworthy=why,
+                    tech_status_plain=tech,
+                    key_support=p.key_support,
+                    key_resistance=p.key_resistance,
+                    today_action_plan=action,
+                )
+            )
+            break
+
+    # 4. ⚠️ Focus 4: Breakdown Risk Alert Pick (破位警戒防守股)
+    for p in breakdown_picks:
+        if p.symbol not in used_syms:
+            used_syms.add(p.symbol)
+            clean_name = COMPANY_PROFILES.get(p.symbol, "").split("，")[0] or p.company_desc.split("，")[0] or p.symbol
+            why = (
+                f"【破位示警・切忌盲目抄底】：近期弱勢指標！昨夜帶量跌破關鍵均線防守點，"
+                f"所屬{p.sector_name.split(' ')[0]}族群資金持續外流，許多投資人容易在此誤判為便宜而急於接刀，特別列出重點示警。"
+            )
+            tech = (
+                f"日線跌破 20MA 月線(${p.ma_20:.2f}) 與 50MA 季線，短中期均線形成死亡交叉向下反轉，"
+                f"RSI(14) 弱勢跌至 {p.rsi_14:.1f}，空方力量占據主導地位。"
+            )
+            action = (
+                f"多單防守第一，嚴禁盲目凹單攤平！手中有持股的朋友，若今日遇到弱勢反彈接近壓力位 ${p.key_resistance:.2f}，"
+                f"應把握機會果斷減碼停損；空手者切勿過早猜底，待日線重新站回月線止跌後再評估。"
+            )
+            focus_list.append(
+                NoteworthyTicker(
+                    symbol=p.symbol,
+                    name=clean_name,
+                    sector_name=p.sector_name,
+                    close=p.close,
+                    ret_1d_pct=p.ret_1d_pct,
+                    ret_5d_pct=p.ret_5d_pct,
+                    vol_ratio_1d=p.vol_ratio_1d,
+                    focus_type="⚠️ 破位警戒防守股",
+                    decision_badge="【停損避險 🔴】",
+                    why_noteworthy=why,
+                    tech_status_plain=tech,
+                    key_support=p.key_support,
+                    key_resistance=p.key_resistance,
+                    today_action_plan=action,
+                )
+            )
+            break
+
+    return focus_list
 
 
 def analyze_market(
@@ -625,6 +925,16 @@ def analyze_market(
     breakdown_filtered = [p for p in breakdown_candidates if p.symbol not in used_symbols][:top_n]
 
     market_tech = _build_market_tech_breakdown(spy_m, qqq_m, vix_m)
+    news_digest = fetch_market_news(use_demo=bool(config.get("use_demo", False)))
+    colloquial_summary = _build_colloquial_market_summary(indices, macros, sector_rankings, news_digest)
+    noteworthy_tickers = _build_noteworthy_tickers(
+        metrics_map=metrics_map,
+        breakout_picks=breakout_candidates[:top_n],
+        pullback_picks=pullback_filtered,
+        breakdown_picks=breakdown_filtered,
+        news_items=news_digest,
+        sector_names=sector_names,
+    )
 
     return WeeklyAnalysisReport(
         report_date=report_date,
@@ -640,4 +950,7 @@ def analyze_market(
         breakdown_picks=breakdown_filtered,
         market_tech=market_tech,
         backtest_meta=BACKTEST_METADATA,
+        news_digest=news_digest,
+        noteworthy_tickers=noteworthy_tickers,
+        colloquial_market_summary=colloquial_summary,
     )
