@@ -2,13 +2,18 @@ name: Daily US Stock Analysis & Push (07:00 Morning & 21:00 Premarket)
 
 on:
   schedule:
-    # 雙時段排程保險機制（自動防重複推播，每時段各成功推播一次）：
+    # 雙時段排程多層錯峰保險機制（自動防重複推播，每時段各成功推播一次）：
     # 1. 晨報 (07:00 台灣時間 / UTC 23:00)：回報前晚美股表現總覽
-    - cron: "0 23 * * *"
-    - cron: "10 23 * * *" # 07:10 備援
+    # 避開 :00 整點世界高峰，採用多階錯峰排程：
+    - cron: "58 22 * * *" # 06:58 台灣時間 (UTC 22:58，避開 00 分壅塞，準時 07:00 送達)
+    - cron: "8 23 * * *"  # 07:08 第一備援
+    - cron: "18 23 * * *" # 07:18 第二備援
+    - cron: "28 23 * * *" # 07:28 第三備援
     # 2. 盤前推薦報 (21:00 台灣時間 / UTC 13:00)：參考早晨盤後及當晚盤前數據，推薦標的
-    - cron: "0 13 * * *"
-    - cron: "10 13 * * *" # 21:10 備援
+    - cron: "58 12 * * *" # 20:58 台灣時間 (UTC 12:58，避開 00 分壅塞，準時 21:00 送達)
+    - cron: "8 13 * * *"  # 21:08 第一備援
+    - cron: "18 13 * * *" # 21:18 第二備援
+    - cron: "28 13 * * *" # 21:28 第三備援
   workflow_dispatch:
     inputs:
       report_type:
@@ -78,7 +83,7 @@ jobs:
           cur_id = str(os.environ["CURRENT_RUN_ID"])
           token = os.environ["GH_TOKEN"]
 
-          url = f"https://api.github.com/repos/{repo}/actions/runs?event=schedule&status=success&per_page=15"
+          url = f"https://api.github.com/repos/{repo}/actions/runs?status=success&per_page=20"
           req = urllib.request.Request(url, headers={
               "Authorization": f"Bearer {token}",
               "Accept": "application/vnd.github+json"
