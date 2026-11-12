@@ -113,23 +113,53 @@ def format_telegram_messages(report: WeeklyAnalysisReport) -> List[str]:
     return [msg1, msg2]
 
 
-def get_telegram_chat_id(bot_token: str) -> Optional[str]:
-    """Try to auto-discover the target chat_id by querying getUpdates."""
+def discover_telegram_chat_ids(bot_token: str) -> List[str]:
+    """Auto-discover all user/group chat_ids that have interacted with the bot via getUpdates."""
+    chat_ids: List[str] = []
     try:
         url = f"{TELEGRAM_API_BASE}/bot{bot_token}/getUpdates"
         resp = requests.get(url, timeout=10)
         if resp.status_code == 200:
             data = resp.json()
-            for update in reversed(data.get("result", [])):
+            for update in data.get("result", []):
+                cid = None
                 if "message" in update and "chat" in update["message"]:
-                    return str(update["message"]["chat"]["id"])
-                if "channel_post" in update and "chat" in update["channel_post"]:
-                    return str(update["channel_post"]["chat"]["id"])
-                if "my_chat_member" in update and "chat" in update["my_chat_member"]:
-                    return str(update["my_chat_member"]["chat"]["id"])
+                    cid = str(update["message"]["chat"]["id"])
+                elif "channel_post" in update and "chat" in update["channel_post"]:
+                    cid = str(update["channel_post"]["chat"]["id"])
+                elif "my_chat_member" in update and "chat" in update["my_chat_member"]:
+                    cid = str(update["my_chat_member"]["chat"]["id"])
+                if cid and cid not in chat_ids:
+                    chat_ids.append(cid)
     except Exception as exc:
         logger.warning("Could not auto-fetch Telegram updates: %s", exc)
-    return None
+    return chat_ids
+
+
+def get_telegram_chat_id(bot_token: str) -> Optional[str]:
+    """Backward compatibility: return the first discovered chat ID."""
+    discovered = discover_telegram_chat_ids(bot_token)
+    return discovered[0] if discovered else None
+
+
+def get_target_chat_ids(bot_token: str, configured_chat_ids: Optional[str] = None) -> List[str]:
+    """Collect and deduplicate all target Telegram chat IDs (from env and/or getUpdates)."""
+    targets: List[str] = []
+
+    # 1. Parse configured IDs (comma or whitespace separated)
+    raw_cfg = configured_chat_ids if configured_chat_ids is not None else os.getenv("TELEGRAM_CHAT_ID", "")
+    for part in raw_cfg.replace(",", " ").split():
+        cleaned = part.strip()
+        if cleaned and cleaned not in targets:
+            targets.append(cleaned)
+
+    # 2. Query getUpdates to discover any additional subscribers who clicked /start
+    discovered = discover_telegram_chat_ids(bot_token)
+    for cid in discovered:
+        if cid not in targets:
+            targets.append(cid)
+
+    return targets
 
 
 def send_telegram_notification(
@@ -137,43 +167,45 @@ def send_telegram_notification(
     bot_token: Optional[str] = None,
     chat_id: Optional[str] = None,
 ) -> bool:
-    """Send formatted market analysis report to Telegram via Bot API."""
+    """Send formatted market analysis report to Telegram via Bot API to all subscribers."""
     token = (bot_token or os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
     if not token:
         logger.info("TELEGRAM_BOT_TOKEN not configured. Skipping Telegram push.")
         return True
 
-    target_chat = (chat_id or os.getenv("TELEGRAM_CHAT_ID") or "").strip()
-    if not target_chat:
-        target_chat = get_telegram_chat_id(token) or ""
-        if target_chat:
-            logger.info("Auto-detected Telegram Chat ID: %s", target_chat)
-        else:
-            logger.warning(
-                "No Telegram Chat ID found. Please open your bot in Telegram and click 'Start' or send a message."
-            )
-            return False
+    target_chats = get_target_chat_ids(bot_token=token, configured_chat_ids=chat_id)
+    if not target_chats:
+        logger.warning(
+            "No Telegram Chat IDs found. Please open your bot in Telegram and click 'Start' or configure TELEGRAM_CHAT_ID."
+        )
+        return False
+
+    logger.info("Preparing to push Telegram report to %d subscriber(s): %s", len(target_chats), target_chats)
 
     messages = format_telegram_messages(report)
     send_url = f"{TELEGRAM_API_BASE}/bot{token}/sendMessage"
 
-    success = True
-    for i, msg in enumerate(messages, start=1):
-        try:
-            payload = {
-                "chat_id": target_chat,
-                "text": msg,
-                "parse_mode": "HTML",
-                "disable_web_page_preview": True,
-            }
-            resp = requests.post(send_url, json=payload, timeout=15)
-            if resp.status_code == 200:
-                logger.info("Successfully pushed Telegram report message #%d to chat %s", i, target_chat)
-            else:
-                logger.error("Failed to send Telegram message #%d: HTTP %d %s", i, resp.status_code, resp.text)
-                success = False
-        except Exception as exc:
-            logger.error("Exception while sending Telegram message #%d: %s", i, exc)
-            success = False
+    overall_success = True
+    for cid in target_chats:
+        for i, msg in enumerate(messages, start=1):
+            try:
+                payload = {
+                    "chat_id": cid,
+                    "text": msg,
+                    "parse_mode": "HTML",
+                    "disable_web_page_preview": True,
+                }
+                resp = requests.post(send_url, json=payload, timeout=15)
+                if resp.status_code == 200:
+                    logger.info("Successfully pushed Telegram report message #%d to chat %s", i, cid)
+                else:
+                    logger.error(
+                        "Failed to send Telegram message #%d to %s: HTTP %d %s",
+                        i, cid, resp.status_code, resp.text
+                    )
+                    overall_success = False
+            except Exception as exc:
+                logger.error("Exception while sending Telegram message #%d to %s: %s", i, cid, exc)
+                overall_success = False
 
-    return success
+    return overall_success
