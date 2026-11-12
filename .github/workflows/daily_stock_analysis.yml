@@ -1,16 +1,26 @@
-name: Daily 07:00 US Stock Volatility & Trading Picks Push
+name: Daily US Stock Analysis & Push (07:00 Morning & 21:00 Premarket)
 
 on:
   schedule:
-    # 三重排程保險機制（自動防重複推播，每天只會推播成功一次）：
-    # 1. 主排程：UTC 23:00 (台灣時間 07:00)
+    # 雙時段排程保險機制（自動防重複推播，每時段各成功推播一次）：
+    # 1. 晨報 (07:00 台灣時間 / UTC 23:00)：回報前晚美股表現總覽
     - cron: "0 23 * * *"
-    # 2. 第一備援：UTC 23:10 (台灣時間 07:10) 若主排程被 GitHub 偶發延遲則自動補發
-    - cron: "10 23 * * *"
-    # 3. 第二備援：UTC 23:20 (台灣時間 07:20) 雙重保險
-    - cron: "20 23 * * *"
+    - cron: "10 23 * * *" # 07:10 備援
+    # 2. 盤前推薦報 (21:00 台灣時間 / UTC 13:00)：參考早晨盤後及當晚盤前數據，推薦標的
+    - cron: "0 13 * * *"
+    - cron: "10 13 * * *" # 21:10 備援
   workflow_dispatch:
     inputs:
+      report_type:
+        description: "推播類型 (auto: 自動依當前時間判定 / morning: 07:00晨報 / evening: 21:00盤前推薦 / all: 全部)"
+        required: false
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - morning
+          - evening
+          - all
       message_mode:
         description: "LINE 推播格式 (both: 輪播卡片+文字 / flex: 僅卡片 / text: 僅文字)"
         required: false
@@ -26,7 +36,7 @@ on:
         default: false
         type: boolean
   repository_dispatch:
-    types: [daily_push]
+    types: [daily_push, morning_push, evening_push]
 
 permissions:
   contents: read
@@ -38,7 +48,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - name: Check if today's scheduled push already succeeded
+      - name: Check if current slot scheduled push already succeeded
         id: dedup
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -53,18 +63,22 @@ jobs:
 
           event_name = os.environ.get("EVENT_NAME", "")
           if event_name != "schedule":
-              print("Manual trigger (workflow_dispatch) -> proceeding with push.")
+              print(f"Trigger event: {event_name} -> proceeding with push.")
               with open(os.environ["GITHUB_OUTPUT"], "a") as f:
                   f.write("skip=false\n")
               raise SystemExit(0)
 
           tz_tw = ZoneInfo("Asia/Taipei")
-          today_tw = datetime.now(tz_tw).strftime("%Y-%m-%d")
+          now_tw = datetime.now(tz_tw)
+          today_tw = now_tw.strftime("%Y-%m-%d")
+          cur_slot = "morning" if 4 <= now_tw.hour < 15 else "evening"
+          slot_tag = f"{today_tw}_{cur_slot}"
+
           repo = os.environ["REPO"]
           cur_id = str(os.environ["CURRENT_RUN_ID"])
           token = os.environ["GH_TOKEN"]
 
-          url = f"https://api.github.com/repos/{repo}/actions/runs?event=schedule&status=success&per_page=10"
+          url = f"https://api.github.com/repos/{repo}/actions/runs?event=schedule&status=success&per_page=15"
           req = urllib.request.Request(url, headers={
               "Authorization": f"Bearer {token}",
               "Accept": "application/vnd.github+json"
@@ -78,9 +92,12 @@ jobs:
                       continue
                   if r.get("conclusion") == "success":
                       created_utc = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00"))
-                      created_tw = created_utc.astimezone(tz_tw).strftime("%Y-%m-%d")
-                      if created_tw == today_tw:
-                          print(f"Today ({today_tw}) scheduled push already succeeded in run {r['id']}. Skipping duplicate backup run.")
+                      c_tw = created_utc.astimezone(tz_tw)
+                      c_date = c_tw.strftime("%Y-%m-%d")
+                      c_slot = "morning" if 4 <= c_tw.hour < 15 else "evening"
+                      c_tag = f"{c_date}_{c_slot}"
+                      if c_tag == slot_tag:
+                          print(f"Slot {slot_tag} scheduled push already succeeded in run {r['id']}. Skipping duplicate backup run.")
                           skip = "true"
                           break
           except Exception as e:
@@ -107,7 +124,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run US Stock Weekly Volatility Analysis & Push (LINE & Telegram)
+      - name: Run US Stock Volatility Analysis & Push (LINE & Telegram)
         if: steps.dedup.outputs.skip != 'true'
         env:
           TZ: Asia/Taipei
@@ -119,11 +136,19 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
+          EXTRA_ARGS=""
           if [ "${{ inputs.use_demo }}" = "true" ]; then
-            python main.py --demo
-          else
-            python main.py
+            EXTRA_ARGS="$EXTRA_ARGS --demo"
           fi
+          REPORT_TYPE="${{ inputs.report_type || 'auto' }}"
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            if [ "${{ github.event.action }}" = "morning_push" ]; then
+              REPORT_TYPE="morning"
+            elif [ "${{ github.event.action }}" = "evening_push" ]; then
+              REPORT_TYPE="evening"
+            fi
+          fi
+          python main.py --report-type "$REPORT_TYPE" $EXTRA_ARGS
 
       - name: Upload Daily Analysis Report Artifact
         uses: actions/upload-artifact@v4

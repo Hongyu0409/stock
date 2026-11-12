@@ -2,7 +2,8 @@
 
 schedule:
   timezone: "Asia/Taipei"
-  push_time: "07:00"
+  morning_push_time: "07:00" # 回報前晚美股表現總覽
+  evening_push_time: "21:00" # 參考早晨盤後及當晚盤前數據，推薦標的
 
 # 1. 大盤核心指數與跨資產風險指標
 market_indices:

@@ -16,21 +16,28 @@ logger = logging.getLogger(__name__)
 TELEGRAM_API_BASE = "https://api.telegram.org"
 
 
-def _fmt_pct(val: float) -> str:
-    arrow = "▲" if val > 0 else ("▼" if val < 0 else "─")
-    return f"{arrow}{val:+.2f}%"
+def _fmt_pct(val: float, is_vix: bool = False) -> str:
+    """Format percentage with intuitive color emojis (Green = Up, Red = Down for US stocks)."""
+    if val > 0:
+        circle = "🟢" if not is_vix else "🔴"
+        return f"{circle} ▲+{val:.2f}%"
+    elif val < 0:
+        circle = "🔴" if not is_vix else "🟢"
+        return f"{circle} ▼{val:.2f}%"
+    else:
+        return "⚪ ─ 0.00%"
 
 
-def format_telegram_messages(report: WeeklyAnalysisReport) -> List[str]:
-    """Format the report into 2 clean, structured HTML messages for Telegram."""
-    # --- Message 1: 🌅 美股每日早報 (大盤體溫、指數、板塊與異常波動) ---
+def format_telegram_messages(report: WeeklyAnalysisReport, report_type: str = "all") -> List[str]:
+    """Format the report into clean, pure-text HTML messages with color emojis for Telegram."""
+    # --- Message 1: 🌅 美股昨日收盤晨報 (07:00 推播：前晚美股表現總覽) ---
     m1_lines: List[str] = [
-        "🌅 <b>【美股每日早報】</b>",
+        "🌅 <b>【美股昨日收盤晨報】</b>",
         f"📅 資料日期：{html.escape(report.report_date)}",
         f"🧭 市場溫度：<b>{html.escape(report.market_regime)}</b>",
         f"💡 {html.escape(report.regime_summary)}",
         "━━━━━━━━━━━━━━",
-        "📊 <b>【主要指數近一週走勢】</b>",
+        "📊 <b>【主要指數昨夜與一週表現】</b>",
     ]
 
     for idx in report.indices:
@@ -45,33 +52,40 @@ def format_telegram_messages(report: WeeklyAnalysisReport) -> List[str]:
         m1_lines.append("🌡️ <b>【市場風險與其他資產】</b>")
         for m in report.macros:
             c_name = m.name.split(" ")[0]
+            is_vix = "vix" in m.symbol.lower()
             m1_lines.append(
-                f"• {html.escape(c_name)}：{m.close:,.2f}（一週 {_fmt_pct(m.ret_5d_pct)}）"
+                f"• {html.escape(c_name)}：{m.close:,.2f}（一週 {_fmt_pct(m.ret_5d_pct, is_vix=is_vix)}）"
             )
 
     if report.sector_rankings:
         m1_lines.append("━━━━━━━━━━━━━━")
-        m1_lines.append("🔄 <b>【本週最夯與最弱產業】</b>")
+        m1_lines.append("🔄 <b>【11大產業板塊資金輪動】</b>")
         top3 = report.sector_rankings[:3]
         bot3 = report.sector_rankings[-3:]
         t_str = "、".join([f"{s.name.split(' ')[0]}({_fmt_pct(s.ret_5d_pct)})" for s in top3])
         b_str = "、".join([f"{s.name.split(' ')[0]}({_fmt_pct(s.ret_5d_pct)})" for s in bot3])
-        m1_lines.append(f"🔥 資金流入（最強）：{html.escape(t_str)}")
-        m1_lines.append(f"❄️ 資金流出（最弱）：{html.escape(b_str)}")
+        m1_lines.append(f"🔥 資金流入（前三強）：{html.escape(t_str)}")
+        m1_lines.append(f"❄️ 資金流出（前三弱）：{html.escape(b_str)}")
 
     if report.volatility_alerts:
         m1_lines.append("━━━━━━━━━━━━━━")
-        m1_lines.append("⚡ <b>【本週波動劇烈個股（震盪大）】</b>")
+        m1_lines.append("⚡ <b>【昨夜與近一週波動劇烈個股】</b>")
         for a in report.volatility_alerts[:4]:
             m1_lines.append(
-                f"• <b>{a.symbol}</b>（${a.close:.2f}）一週漲跌 {a.ret_5d_pct:+.1f}%\n"
+                f"• <b>{a.symbol}</b>（${a.close:.2f}）一週 {_fmt_pct(a.ret_5d_pct)}\n"
                 f"   高低點震盪幅度：{a.week_range_pct:.1f}%"
             )
 
-    # --- Message 2: 🎯 今日精選觀察個股 ---
+    m1_lines.append("━━━━━━━━━━━━━━")
+    m1_lines.append("📌 <i>今晚 21:00 將參考最新盤前與盤後動態，為您推播美股精選推薦標的！</i>")
+
+    # --- Message 2: 🎯 美股盤前雷達與精選推薦標的 (21:00 推播：盤前選股) ---
+    short_date = report.report_date.split("（")[0]
     m2_lines: List[str] = [
-        f"🎯 <b>【今日精選觀察個股】</b>{html.escape(report.report_date)}",
-        "💡 系統依趨勢強弱自動計算參考價位（風報比 1:2）",
+        f"🎯 <b>【美股盤前雷達與精選推薦標的】</b>",
+        f"📅 資料日期：{html.escape(short_date)} 21:00（美股開盤前預備）",
+        f"🧭 盤前氛圍：<b>{html.escape(report.market_regime)}</b>",
+        "💡 系統依早晨盤後及最新盤前動能，精選關鍵支撐/突破標的（風報比 1:2）：",
     ]
 
     def _append_picks_section(title: str, picks: List[TradingPick], is_short: bool = False) -> None:
@@ -94,7 +108,7 @@ def format_telegram_messages(report: WeeklyAnalysisReport) -> List[str]:
             m2_lines.append(
                 f"<b>{idx_num}. 【{p.symbol}】</b>（{html.escape(p.sector_name.split(' ')[0])}）評分 <b>{p.score}分</b>\n"
                 f"{desc_line}"
-                f"   現價：${p.close:.2f}（昨夜 {p.ret_1d_pct:+.1f}% / 一週 {p.ret_5d_pct:+.1f}%）\n"
+                f"   現價：${p.close:.2f}（昨夜 {_fmt_pct(p.ret_1d_pct)} ｜ 一週 {_fmt_pct(p.ret_5d_pct)}）\n"
                 f"   📌 重點特徵：{html.escape(tag_str)}\n"
                 f"   🎯 參考進場區間：<code>{html.escape(p.entry_zone)}</code>\n"
                 f"   🛡️ {sl_label}：<code>${p.stop_loss:.2f} ({p.stop_loss_pct:+.1f}%)</code>\n"
@@ -103,13 +117,18 @@ def format_telegram_messages(report: WeeklyAnalysisReport) -> List[str]:
 
     _append_picks_section("🚀 <b>【強勢突破股（買盤轉強創高）】</b>", report.breakout_picks, is_short=False)
     _append_picks_section("🔄 <b>【優質回檔股（多頭拉回找支撐）】</b>", report.pullback_picks, is_short=False)
-    _append_picks_section("⚠️ <b>【弱勢警戒股（跌破重要均線）】</b>", report.breakdown_picks, is_short=True)
+    _append_picks_section("⚠️ <b>【弱勢警戒股（跌破重要均線避險）】</b>", report.breakdown_picks, is_short=True)
 
     m2_lines.append("━━━━━━━━━━━━━━")
-    m2_lines.append("📌 溫馨提醒：本清單由演算法自動統計，僅供日常觀察與風險控管參考，不代表投資建議。")
+    m2_lines.append("📌 <i>溫馨提醒：本清單由演算法自動統計，僅供開盤前觀察與風險控管參考，不代表投資建議。</i>")
 
     msg1 = "\n".join(m1_lines)
     msg2 = "\n".join(m2_lines)
+
+    if report_type == "morning":
+        return [msg1]
+    elif report_type == "evening":
+        return [msg2]
     return [msg1, msg2]
 
 
@@ -166,6 +185,7 @@ def send_telegram_notification(
     report: WeeklyAnalysisReport,
     bot_token: Optional[str] = None,
     chat_id: Optional[str] = None,
+    report_type: str = "all",
 ) -> bool:
     """Send formatted market analysis report to Telegram via Bot API to all subscribers."""
     token = (bot_token or os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
@@ -180,9 +200,9 @@ def send_telegram_notification(
         )
         return False
 
-    logger.info("Preparing to push Telegram report to %d subscriber(s): %s", len(target_chats), target_chats)
+    logger.info("Preparing to push Telegram report (%s) to %d subscriber(s): %s", report_type, len(target_chats), target_chats)
 
-    messages = format_telegram_messages(report)
+    messages = format_telegram_messages(report, report_type=report_type)
     send_url = f"{TELEGRAM_API_BASE}/bot{token}/sendMessage"
 
     overall_success = True

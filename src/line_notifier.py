@@ -19,25 +19,31 @@ LINE_OAUTH_TOKEN_URL = "https://api.line.me/v2/oauth/accessToken"
 LINE_BOT_INFO_URL = "https://api.line.me/v2/bot/info"
 
 
-def _fmt_pct(val: float) -> str:
-    arrow = "▲" if val > 0 else ("▼" if val < 0 else "─")
-    return f"{arrow}{val:+.2f}%"
+def _fmt_pct(val: float, is_vix: bool = False) -> str:
+    """Format percentage with intuitive color emojis (Green = Up, Red = Down for US stocks)."""
+    if val > 0:
+        circle = "🟢" if not is_vix else "🔴"
+        return f"{circle} ▲+{val:.2f}%"
+    elif val < 0:
+        circle = "🔴" if not is_vix else "🟢"
+        return f"{circle} ▼{val:.2f}%"
+    else:
+        return "⚪ ─ 0.00%"
 
 
-def format_line_text_messages(report: WeeklyAnalysisReport) -> List[str]:
+def format_line_text_messages(report: WeeklyAnalysisReport, report_type: str = "all") -> List[str]:
     """Format the report into 1-2 mobile-friendly, easy-to-read LINE text messages."""
-    # Message 1: Market Temperature & Overall Trend
+    # Message 1: 🌅 美股昨日收盤晨報 (07:00 推播：前晚美股表現總覽)
     lines_1: List[str] = [
-        f"🌅 【美股每日早報】",
+        "🌅 【美股昨日收盤晨報】",
         f"📅 資料日期：{report.report_date}",
         f"🧭 市場溫度：{report.market_regime}",
         f"💡 {report.regime_summary}",
         "━━━━━━━━━━━━━━",
-        "📊 【主要指數近一週走勢】",
+        "📊 【主要指數昨夜與一週表現】",
     ]
 
     for idx in report.indices:
-        # e.g., 標普500 (SPY): $580.20 | 昨夜 ▲+0.3% | 一週 ▼-2.1%
         c_name = idx.name.split(" ")[0]
         lines_1.append(
             f"• {c_name} ({idx.symbol})：${idx.close:,.2f}\n"
@@ -49,39 +55,42 @@ def format_line_text_messages(report: WeeklyAnalysisReport) -> List[str]:
         lines_1.append("🌡️ 【市場風險與其他資產】")
         for m in report.macros:
             c_name = m.name.split(" ")[0]
+            is_vix = "vix" in m.symbol.lower()
             lines_1.append(
-                f"• {c_name}：{m.close:,.2f}（一週 {_fmt_pct(m.ret_5d_pct)}）"
+                f"• {c_name}：{m.close:,.2f}（一週 {_fmt_pct(m.ret_5d_pct, is_vix=is_vix)}）"
             )
 
     if report.sector_rankings:
         lines_1.append("━━━━━━━━━━━━━━")
-        lines_1.append("🔄 【本週最夯與最弱產業】")
+        lines_1.append("🔄 【11大產業板塊資金輪動】")
         top3 = report.sector_rankings[:3]
         bot3 = report.sector_rankings[-3:]
-        lines_1.append(
-            "🔥 資金流入（最強）："
-            + "、".join(f"{s.name.split(' ')[0]}({s.ret_5d_pct:+.1f}%)" for s in top3)
-        )
-        lines_1.append(
-            "❄️ 資金流出（最弱）："
-            + "、".join(f"{s.name.split(' ')[0]}({s.ret_5d_pct:+.1f}%)" for s in bot3)
-        )
+        t_str = "、".join([f"{s.name.split(' ')[0]}({_fmt_pct(s.ret_5d_pct)})" for s in top3])
+        b_str = "、".join([f"{s.name.split(' ')[0]}({_fmt_pct(s.ret_5d_pct)})" for s in bot3])
+        lines_1.append(f"🔥 資金流入（前三強）：{t_str}")
+        lines_1.append(f"❄️ 資金流出（前三弱）：{b_str}")
 
     if report.volatility_alerts:
         lines_1.append("━━━━━━━━━━━━━━")
-        lines_1.append("⚡ 【本週波動劇烈個股（震盪大）】")
+        lines_1.append("⚡ 【昨夜與近一週波動劇烈個股】")
         for v in report.volatility_alerts[:4]:
             lines_1.append(
-                f"• {v.symbol}（${v.close:.2f}）一週漲跌 {v.ret_5d_pct:+.1f}%\n"
+                f"• {v.symbol}（${v.close:.2f}）一週 {_fmt_pct(v.ret_5d_pct)}\n"
                 f"  高低點震盪幅度：{v.week_range_pct:.1f}%"
             )
 
+    lines_1.append("━━━━━━━━━━━━━━")
+    lines_1.append("📌 今晚 21:00 將參考最新盤前與盤後動態，為您推播美股精選推薦標的！")
+
     msg1 = "\n".join(lines_1)
 
-    # Message 2: Daily Selected Stocks
+    # Message 2: 🎯 美股盤前雷達與精選推薦標的 (21:00 推播：盤前選股)
+    short_date = report.report_date.split("（")[0]
     lines_2: List[str] = [
-        f"🎯 【今日精選觀察個股】{report.report_date}",
-        "💡 系統依趨勢強弱自動計算參考價位（風報比 1:2）",
+        f"🎯 【美股盤前雷達與精選推薦標的】",
+        f"📅 資料日期：{short_date} 21:00（美股開盤前預備）",
+        f"🧭 盤前氛圍：{report.market_regime}",
+        "💡 系統依早晨盤後及最新盤前動能，精選關鍵支撐/突破標的（風報比 1:2）：",
     ]
 
     def _append_picks_section(title: str, picks: List[TradingPick], is_short: bool = False) -> None:
@@ -103,7 +112,7 @@ def format_line_text_messages(report: WeeklyAnalysisReport) -> List[str]:
             lines_2.append(
                 f"{idx_num}. 【{p.symbol}】（{p.sector_name.split(' ')[0]}）評分 {p.score}分\n"
                 f"{desc_line}"
-                f"   現價：${p.close:.2f}（昨夜 {p.ret_1d_pct:+.1f}% / 一週 {p.ret_5d_pct:+.1f}%）\n"
+                f"   現價：${p.close:.2f}（昨夜 {_fmt_pct(p.ret_1d_pct)} ｜ 一週 {_fmt_pct(p.ret_5d_pct)}）\n"
                 f"   📌 重點特徵：{tag_str}\n"
                 f"   🎯 參考進場區間：{p.entry_zone}\n"
                 f"   🛡️ {sl_label}：${p.stop_loss:.2f} ({p.stop_loss_pct:+.1f}%)\n"
@@ -112,12 +121,17 @@ def format_line_text_messages(report: WeeklyAnalysisReport) -> List[str]:
 
     _append_picks_section("🚀 【強勢突破股（買盤轉強創高）】", report.breakout_picks, is_short=False)
     _append_picks_section("🔄 【優質回檔股（多頭拉回找支撐）】", report.pullback_picks, is_short=False)
-    _append_picks_section("⚠️ 【弱勢警戒股（跌破重要均線）】", report.breakdown_picks, is_short=True)
+    _append_picks_section("⚠️ 【弱勢警戒股（跌破重要均線避險）】", report.breakdown_picks, is_short=True)
 
     lines_2.append("━━━━━━━━━━━━━━")
-    lines_2.append("📌 溫馨提醒：本清單由演算法自動統計，僅供日常觀察與風險控管參考，不代表投資建議。")
+    lines_2.append("📌 溫馨提醒：本清單由演算法自動統計，僅供開盤前觀察與風險控管參考，不代表投資建議。")
 
     msg2 = "\n".join(lines_2)
+
+    if report_type == "morning":
+        return [msg1[:4900]]
+    elif report_type == "evening":
+        return [msg2[:4900]]
     return [msg1[:4900], msg2[:4900]]
 
 
@@ -261,7 +275,7 @@ def _build_pick_bubble(
     }
 
 
-def build_line_flex_carousel(report: WeeklyAnalysisReport) -> Dict[str, Any]:
+def build_line_flex_carousel(report: WeeklyAnalysisReport, report_type: str = "all") -> Dict[str, Any]:
     """Build a 4-bubble LINE Flex Message Carousel for the daily morning report."""
     # Bubble 1: Market & Sector Volatility Overview
     idx_rows: List[Dict[str, Any]] = []
@@ -387,12 +401,22 @@ def build_line_flex_carousel(report: WeeklyAnalysisReport) -> Dict[str, Any]:
         is_short=True,
     )
 
+    if report_type == "morning":
+        carousel_bubbles = [overview_bubble]
+        alt_title = f"🌅 美股昨日收盤晨報 ({short_date})"
+    elif report_type == "evening":
+        carousel_bubbles = [b_breakout, b_pullback, b_breakdown]
+        alt_title = f"🎯 美股盤前精選推薦標的 ({short_date})"
+    else:
+        carousel_bubbles = [overview_bubble, b_breakout, b_pullback, b_breakdown]
+        alt_title = f"🌅 美股晨間與精選戰報 ({report.report_date})"
+
     return {
         "type": "flex",
-        "altText": f"🌅 美股晨間戰報 ({report.report_date}) - {report.market_regime}",
+        "altText": f"{alt_title} - {report.market_regime}",
         "contents": {
             "type": "carousel",
-            "contents": [overview_bubble, b_breakout, b_pullback, b_breakdown],
+            "contents": carousel_bubbles,
         },
     }
 
@@ -426,6 +450,7 @@ def send_line_notification(
     channel_access_token: Optional[str] = None,
     user_id: Optional[str] = None,
     mode: str = "both",
+    report_type: str = "all",
 ) -> bool:
     """Push or broadcast the report via LINE Messaging API."""
     token = (channel_access_token or os.getenv("LINE_CHANNEL_ACCESS_TOKEN") or "").strip()
@@ -472,9 +497,9 @@ def send_line_notification(
 
     messages_payload: List[Dict[str, Any]] = []
     if mode in ("flex", "both"):
-        messages_payload.append(build_line_flex_carousel(report))
+        messages_payload.append(build_line_flex_carousel(report, report_type=report_type))
     if mode in ("text", "both"):
-        for txt in format_line_text_messages(report):
+        for txt in format_line_text_messages(report, report_type=report_type):
             messages_payload.append({"type": "text", "text": txt})
 
     # LINE API allows up to 5 message objects per request
